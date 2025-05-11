@@ -1,0 +1,10 @@
+{
+    "files.associations": {
+        "*.ejs": "html",
+        "inttypes.h": "c",
+        "algorithm": "c",
+        "format": "c",
+        "manchester.h": "c",
+        "esp_intr_alloc.h": "c"
+    }
+}
