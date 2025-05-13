@@ -5,6 +5,13 @@
         "algorithm": "c",
         "format": "c",
         "manchester.h": "c",
-        "esp_intr_alloc.h": "c"
+        "esp_intr_alloc.h": "c",
+        "task.h": "c",
+        "freertos.h": "c",
+        "string.h": "c",
+        "macros.h": "c",
+        "gpio.h": "c",
+        "compare": "c",
+        "cstdint": "c"
     }
 }
