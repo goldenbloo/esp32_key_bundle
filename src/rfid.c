@@ -23,13 +23,12 @@ const uint8_t parity_row_table[16] = {
     0, 1, 1, 0, 1, 0, 0, 1,
     1, 0, 0, 1, 0, 1, 1, 0};
 
-void IRAM_ATTR
-rfid_read_isr_handler(void *arg)
+void IRAM_ATTR rfid_read_isr_handler(void *arg)
 {
     static uint32_t lastTick = 0;
     static bool lastLevel = 0;
     static manchester_t m;
-    static uint32_t idx = 0;
+    // static uint32_t idx = 0;
     gpio_intr_disable(INPUT_SIGNAL_PIN);
     uint32_t currTick = esp_cpu_get_cycle_count();
     rfid_read_event_t evt;
@@ -51,7 +50,7 @@ rfid_read_isr_handler(void *arg)
     // // evt.ms = esp_log_timestamp();
     lastTick = currTick;
     lastLevel = evt.level;
-    evt.idx = idx++;
+    // evt.idx = idx++;
 
     //---------------------------------------------------------------
     if ((evt.ms > PERIOD_HIGH) || (evt.ms < PERIOD_HALF_LOW))
@@ -82,7 +81,7 @@ rfid_read_isr_handler(void *arg)
                 syncErrorFunc(&m);
             m.currentBit = !m.lastBit;
             m.bitIsReady = true;
-            gpio_set_level(LED_PIN, m.currentBit);
+            // gpio_set_level(LED_PIN, m.currentBit);
         }
         // If m sync is established and counter is more than PERIOD_HALF_LOW
         else if (evt.ms > PERIOD_HALF_LOW)
@@ -94,7 +93,7 @@ rfid_read_isr_handler(void *arg)
                 m.currentBit = m.lastBit;
                 m.bitIsReady = true;
                 m.checkNextEdge = false;
-                gpio_set_level(LED_PIN, m.currentBit);
+                // gpio_set_level(LED_PIN, m.currentBit);
             }
         }
         else
@@ -152,10 +151,8 @@ rfid_read_isr_handler(void *arg)
                     uint8_t shift = (i + 1) * 5 + 1;
                     nibbles[i] = (m.tagInputBuff >> shift) & 0x0F;
                 }
-                for (uint8_t byte = 0; byte < 5; byte++)
-                {
-                    evt.tag[byte] = (nibbles[2 * byte + 1] << 4) | (nibbles[2 * byte]);
-                }
+                for (uint8_t byte = 0; byte < 5; byte++)                
+                    evt.tag[byte] = (nibbles[2 * byte + 1] << 4) | (nibbles[2 * byte]);                
                 // evt.tag[i / 2] |= ((m.tagInputBuff >> ((i + 1) * 5 + 1) ) & 0x0F) << (i % 2);
                 // ESP_LOGI(TAG, "tag:\t %#lx", tagId);
             }

@@ -1,7 +1,7 @@
 #include "macros.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "driver/rmt.h"
+// #include "driver/rmt.h"
 #include "driver/rmt_tx.h"
 
 #include "driver/gpio.h"
@@ -13,15 +13,28 @@
 #include "esp_intr_alloc.h"
 #include "rfid.h"
 
-#define ESP_INTR_FLAG_DEFAULT 0
+#define ESP_INTR_FLAG_DEFAULT   0
+#define READ_MODE               0
+#define TRANSMIT_MODE           1
 
 #define RMT_SIZE 64
-rmt_symbol_word_t pulse_pattern[RMT_SIZE];
 
 static const char *TAG = "ISR_offload";
-gptimer_handle_t signalTimer = NULL;
+static const char *TAG2 = "button_offload";
+// gptimer_handle_t signalTimer = NULL;
+rmt_channel_handle_t tx_chan = NULL;
+rmt_encoder_handle_t copy_enc;
+rmt_transmit_config_t trans_config  = {
+        .loop_count = -1,
+        .flags.eot_level = false,
+        .flags.queue_nonblocking = true,
+    };
+;
+rmt_symbol_word_t pulse_pattern[RMT_SIZE];
+SemaphoreHandle_t modeSwitchSem;
 uint64_t tag1 = 0xff8e2001a5761700, tag2 = 0x900b7c28d;
 
+void raw_tag_to_rmt(rmt_symbol_word_t *rmtArr, uint64_t rawTag);
 
 void rfid_deferred_task(void *arg)
 {
@@ -53,18 +66,99 @@ void rfid_deferred_task(void *arg)
     }
 }
 
-bool IRAM_ATTR on_timer_alarm(gptimer_handle_t t, const gptimer_alarm_event_data_t *edata, void *user_ctx)
-{
-    static uint8_t bit = 0, clk = 0;
+// bool IRAM_ATTR on_timer_alarm(gptimer_handle_t t, const gptimer_alarm_event_data_t *edata, void *user_ctx)
+// {
+//     static uint8_t bit = 0, clk = 0;
 
-    uint8_t level = ((tag1 >> (63-bit)) & 1) ^ clk;
-    if (clk > 0)
-        bit = (bit + 1) % 64;
-    clk = !clk;
+//     uint8_t level = ((tag1 >> (63-bit)) & 1) ^ clk;
+//     if (clk > 0)
+//         bit = (bit + 1) % 64;
+//     clk = !clk;
     
-    gpio_set_level(COIL_OUTPUT_PIN, level);
-    gpio_set_level(LED_PIN, level);
-    return false;
+//     gpio_set_level(COIL_OUTPUT_PIN, level);
+//     gpio_set_level(LED_PIN, level);
+//     return false;
+// }
+
+void button_interrupt_handler(void *arg)
+{
+    BaseType_t woken = pdFALSE;
+    xSemaphoreGiveFromISR(modeSwitchSem, &woken);
+    if (woken == pdTRUE) {
+        // If giving the semaphore woke a higher‐priority task, yield now
+        portYIELD_FROM_ISR();
+    }
+
+}
+
+static void mode_switch_task(void *params)
+{
+    uint8_t mode = READ_MODE;
+
+    for (;;)
+    {
+        // Wait indefinitely for a button press event
+        if (xSemaphoreTake(modeSwitchSem, portMAX_DELAY) == pdTRUE)
+        {
+            // Toggle mode
+            mode = (mode == READ_MODE) ? TRANSMIT_MODE : READ_MODE;
+        }
+
+        if (mode == READ_MODE)
+        {
+            // Disable RMT TX
+            // trans_config.loop_count = -1;
+            // ESP_LOGI(TAG2, "trying set loop to 1");
+            // ESP_ERROR_CHECK(rmt_tx_wait_all_done(tx_chan, portMAX_DELAY));
+            esp_err_t err = rmt_disable(tx_chan);
+            if (err != ESP_ERR_INVALID_STATE && err != ESP_OK )
+                ESP_LOGE(TAG2, "Error occurred: %s (0x%x)", esp_err_to_name(err), err);
+            // trans_config.loop_count = -1;
+            ESP_ERROR_CHECK(rmt_enable(tx_chan));
+            for (uint8_t i = 0; i < 64; i++)
+            {       
+                pulse_pattern[i].duration0  = 4;
+                pulse_pattern[i].duration1  = 4;
+                pulse_pattern[i].level0     = 1;
+                pulse_pattern[i].level1     = 0;        
+            } 
+            ESP_ERROR_CHECK(rmt_transmit(tx_chan, copy_enc, pulse_pattern, sizeof(pulse_pattern), &trans_config));
+            ESP_LOGI(TAG2, "rmt tx carrier");
+            // Enable coil VCC
+            gpio_set_level(COIL_VCC_PIN, 1);
+            // Enable coil carrier signal LEDC
+            // ESP_ERROR_CHECK(ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, 512));
+            // ESP_ERROR_CHECK(ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0));
+            // Enable GPIO input signal interrupt
+            ESP_ERROR_CHECK(gpio_intr_enable(INPUT_SIGNAL_PIN));
+
+            gpio_set_level(LED_PIN, 1);
+        }
+        else if (mode == TRANSMIT_MODE)
+        {
+            // Disable GPIO input signal interrupt
+            ESP_ERROR_CHECK(gpio_intr_disable(INPUT_SIGNAL_PIN));
+            // Disable coil VCC
+            gpio_set_level(COIL_VCC_PIN, 0);
+            // Disable coil carrier signal LEDC
+            // ESP_ERROR_CHECK(ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, 0));
+            // ESP_ERROR_CHECK(ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0));
+            // Enable RMT and start tx
+            // ESP_LOGI(TAG2, "trying set loop to -1");
+            // trans_config.loop_count = -1;
+            
+            raw_tag_to_rmt(pulse_pattern, tag1);
+            // ESP_ERROR_CHECK(rmt_tx_wait_all_done(tx_chan, portMAX_DELAY));
+                        esp_err_t err = rmt_disable(tx_chan);
+            if (err != ESP_ERR_INVALID_STATE && err != ESP_OK )
+                ESP_LOGE(TAG2, "Error occurred: %s (0x%x)", esp_err_to_name(err), err);
+            ESP_ERROR_CHECK(rmt_enable(tx_chan));
+            // trans_config.loop_count = -1;
+            ESP_ERROR_CHECK(rmt_transmit(tx_chan, copy_enc, pulse_pattern, sizeof(pulse_pattern), &trans_config));
+            ESP_LOGI(TAG2, "rmt tx tag");
+            gpio_set_level(LED_PIN, 0);
+        }
+    }
 }
 
 void raw_tag_to_rmt(rmt_symbol_word_t *rmtArr, uint64_t rawTag)
@@ -86,6 +180,7 @@ void raw_tag_to_rmt(rmt_symbol_word_t *rmtArr, uint64_t rawTag)
         rmtArr[i].duration1 = 256;
     }
 }
+
 
 void app_main(void)
 {
@@ -120,26 +215,26 @@ void app_main(void)
 //-----------------------------------------------------------------------------
 // General Purpouse Timer Setup
 // Timer for impulse time counting
-    gptimer_config_t timer_config = {
-        .clk_src = GPTIMER_CLK_SRC_DEFAULT,
-        .direction = GPTIMER_COUNT_UP,
-        .resolution_hz = 1000000, // 1MHz, 1 tick=1us
-    };
-    ESP_ERROR_CHECK(gptimer_new_timer(&timer_config, &signalTimer));
-    // Configure the timer alarm to trigger 
-     gptimer_alarm_config_t alarm_config = {
-        .alarm_count = 256,  // Set the alarm value to trigger interrupt
-        .reload_count = 0,                 // No need to reload the timer after alarm trigger
-        .flags.auto_reload_on_alarm = true, // The timer counts up
+    // gptimer_config_t timer_config = {
+    //     .clk_src = GPTIMER_CLK_SRC_DEFAULT,
+    //     .direction = GPTIMER_COUNT_UP,
+    //     .resolution_hz = 1000000, // 1MHz, 1 tick=1us
+    // };
+    // ESP_ERROR_CHECK(gptimer_new_timer(&timer_config, &signalTimer));
+    // // Configure the timer alarm to trigger 
+    //  gptimer_alarm_config_t alarm_config = {
+    //     .alarm_count = 256,  // Set the alarm value to trigger interrupt
+    //     .reload_count = 0,                 // No need to reload the timer after alarm trigger
+    //     .flags.auto_reload_on_alarm = true, // The timer counts up
 
-    };
-    gptimer_event_callbacks_t cbs ={
-        .on_alarm = on_timer_alarm,
-    };
-    ESP_ERROR_CHECK(gptimer_set_alarm_action(signalTimer, &alarm_config));
-    ESP_ERROR_CHECK(gptimer_register_event_callbacks(signalTimer, &cbs, NULL));
-    ESP_ERROR_CHECK(gptimer_enable(signalTimer));    
-    ESP_ERROR_CHECK(gptimer_start(signalTimer));
+    // };
+    // gptimer_event_callbacks_t cbs ={
+    //     .on_alarm = on_timer_alarm,
+    // };
+    // ESP_ERROR_CHECK(gptimer_set_alarm_action(signalTimer, &alarm_config));
+    // ESP_ERROR_CHECK(gptimer_register_event_callbacks(signalTimer, &cbs, NULL));
+    // ESP_ERROR_CHECK(gptimer_enable(signalTimer));    
+    // ESP_ERROR_CHECK(gptimer_start(signalTimer));
 
     // Create the queue. 
     inputIsrEvtQueue = xQueueCreate(100, sizeof(rfid_read_event_t));
@@ -149,22 +244,32 @@ void app_main(void)
         return;
     }
 //-----------------------------------------------------------------------------
-// GPIO Interrupt Setup
-
-    // Configure the GPIO pin for input with the desired pull configuration.
-    gpio_config_t io_conf = {
-        .intr_type = GPIO_INTR_ANYEDGE, // Interrupt on any state change
+// Signal input GPIO interrupt setup    
+    gpio_config_t inputSingal_config = {
+        .intr_type = GPIO_INTR_ANYEDGE, 
         .mode = GPIO_MODE_INPUT,
         .pin_bit_mask = (1ULL << INPUT_SIGNAL_PIN),
-        .pull_up_en = GPIO_PULLUP_ENABLE,     // Enable pull-up if needed
-        .pull_down_en = GPIO_PULLDOWN_DISABLE 
-        
+        .pull_up_en = GPIO_PULLUP_ENABLE,     
+        .pull_down_en = GPIO_PULLDOWN_DISABLE         
     };
-    ESP_ERROR_CHECK(gpio_config(&io_conf));
-
+    ESP_ERROR_CHECK(gpio_config(&inputSingal_config));
     // Install GPIO ISR service and add the handler for our pin.
     ESP_ERROR_CHECK(gpio_install_isr_service(ESP_INTR_FLAG_DEFAULT));
     ESP_ERROR_CHECK(gpio_isr_handler_add(INPUT_SIGNAL_PIN, rfid_read_isr_handler, (void *)INPUT_SIGNAL_PIN));
+
+//Button GPIO interrupt setup
+    gpio_config_t buttonState_config = {
+        .intr_type = GPIO_INTR_NEGEDGE, 
+        .mode = GPIO_MODE_INPUT,
+        .pin_bit_mask = (1ULL << BUTTON_PIN),
+        .pull_up_en = GPIO_PULLUP_ENABLE,     
+        .pull_down_en = GPIO_PULLDOWN_DISABLE         
+    };
+    ESP_ERROR_CHECK(gpio_config(&buttonState_config));
+    // Install GPIO ISR service and add the handler for our pin.    
+    ESP_ERROR_CHECK(gpio_isr_handler_add(BUTTON_PIN, button_interrupt_handler, (void *)BUTTON_PIN));
+
+
 //-----------------------------------------------------------------------------
 // LED pin setup
     gpio_config_t led_io = {
@@ -174,30 +279,38 @@ void app_main(void)
         .pull_down_en = GPIO_PULLDOWN_DISABLE};
     ESP_ERROR_CHECK(gpio_config(&led_io));
 
+//-----------------------------------------------------------------------------
+//RMT TX tag transmit
     rmt_tx_channel_config_t tx_chan_config = {
-        .gpio_num = 19,
+        .gpio_num = COIL_OUTPUT_PIN,
         .clk_src = RMT_CLK_SRC_DEFAULT,
         .resolution_hz = 1000000, // 1 MHz resolution
         .mem_block_symbols = 64,
         .trans_queue_depth = 4,
         .flags.invert_out = false,
     };
-    rmt_channel_handle_t tx_chan = NULL;
+    
     ESP_ERROR_CHECK(rmt_new_tx_channel(&tx_chan_config, &tx_chan));
-    ESP_ERROR_CHECK(rmt_enable(tx_chan));
-    rmt_transmit_config_t trans_config = {
-        .loop_count = -1,
-        .flags.eot_level = false,
-        .flags.queue_nonblocking = true,
-    };
-    raw_tag_to_rmt(pulse_pattern, tag1);
-    rmt_copy_encoder_config_t copy_cfg = { /* no fields yet */ };
-    rmt_encoder_handle_t copy_enc;
-    ESP_ERROR_CHECK(rmt_new_copy_encoder(&copy_cfg, &copy_enc));
+    // ESP_ERROR_CHECK(rmt_enable(tx_chan));
+    
+    // raw_tag_to_rmt(pulse_pattern, tag1);
+    // rmt_symbol_word_t carrier_pattern[64];
 
-    ESP_ERROR_CHECK(rmt_transmit(tx_chan, copy_enc, pulse_pattern, sizeof(pulse_pattern), &trans_config));
+
+    rmt_copy_encoder_config_t copy_cfg = {};
+    
+    ESP_ERROR_CHECK(rmt_new_copy_encoder(&copy_cfg, &copy_enc));
+    // ESP_ERROR_CHECK(rmt_transmit(tx_chan, copy_enc, pulse_pattern, sizeof(pulse_pattern), &trans_config));
+    // ESP_ERROR_CHECK(rmt_transmit(tx_chan, copy_enc, &carrier_pattern, sizeof(carrier_pattern), &trans_config));
     //-----------------------------------------------------------------------------
     // Create a task to process the deferred events.
-
     xTaskCreate(rfid_deferred_task, "rfid_deferred_task", 2048, NULL, 1, NULL);
+
+    //-----------------------------------------------------------------------------
+    // Create semaphore for mode switching
+    modeSwitchSem = xSemaphoreCreateBinary();
+    configASSERT(modeSwitchSem != NULL);
+    // Create the worker task
+    xTaskCreate(mode_switch_task, "mode_switch", 2048, 0, 10, NULL);
+    // ESP_ERROR_CHECK(rmt_disable(tx_chan));
 }

@@ -1,7 +1,8 @@
-#define INPUT_SIGNAL_PIN  23
+#define INPUT_SIGNAL_PIN  22
 #define LED_PIN           2
-#define COIL_OUTPUT_PIN   19
-#define COIL_VCC_PIN      21
+#define COIL_OUTPUT_PIN   13
+#define COIL_VCC_PIN      15
+#define BUTTON_PIN        23
 
 #define PERIOD            512
 #define PERIOD_LOW        387

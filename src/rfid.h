@@ -7,7 +7,7 @@ extern QueueHandle_t inputIsrEvtQueue;
 typedef struct {
     bool level;
     uint32_t ms;  // Optional: store a ms if needed
-    uint32_t idx;
+    // uint32_t idx;
     uint64_t buf;
     uint8_t tag[5];
 } rfid_read_event_t;
