@@ -1,9 +1,7 @@
 #include "macros.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-// #include "driver/rmt.h"
 #include "driver/rmt_tx.h"
-
 #include "driver/gpio.h"
 #include "driver/ledc.h"
 #include "driver/gptimer.h"
@@ -11,6 +9,11 @@
 #include <inttypes.h>
 #include <string.h> // For memset
 #include "esp_intr_alloc.h"
+#include "nvs.h"
+#
+#include "ssd1306.h"
+// #include "font8x8_basic.h"
+
 #include "rfid.h"
 
 #define ESP_INTR_FLAG_DEFAULT   0
@@ -29,71 +32,69 @@ rmt_transmit_config_t trans_config  = {
         .flags.eot_level = false,
         .flags.queue_nonblocking = true,
     };
-;
 rmt_symbol_word_t pulse_pattern[RMT_SIZE];
 SemaphoreHandle_t modeSwitchSem;
+SSD1306_t dev;
 uint64_t tag1 = 0xff8e2001a5761700, tag2 = 0x900b7c28d;
+
 
 void raw_tag_to_rmt(rmt_symbol_word_t *rmtArr, uint64_t rawTag);
 
 void rfid_deferred_task(void *arg)
 {
     rfid_read_event_t evt;
-    // char str[65];
-    
+    uint64_t last_tag = 0;
+    char str[70];    
     for (;;)
     {
         if (xQueueReceive(inputIsrEvtQueue, &evt, portMAX_DELAY))
-        {
-
-            // if (evt.tag[3] != 0)       
+        {    
             {
                 // ESP_LOGI(TAG, "Level: %d, Time: %lu, idx: %ld, buff: %s", evt.level, evt.ms, evt.idx, int_to_char_bin(str,evt.buf));
                 uint64_t long_tag = 0;
                 for (uint8_t i = 0; i < 5; i++)
                     long_tag |= ((uint64_t)evt.tag[i] << (8 * i));
-                // long_tag |= (uint64_t)evt.tag[0];
-                // long_tag |= (uint64_t)evt.tag[1] << 8;
-                // long_tag |= (uint64_t)evt.tag[2] << 16;
-                // long_tag |= (uint64_t)evt.tag[3] << 24;
-                // long_tag |= (uint64_t)evt.tag[4] << 32;
-                
-                ESP_LOGI(TAG, "tag: %#llx", long_tag);
-                // ESP_LOGI(TAG, "tag: %#x %x %x %x %x", evt.tag[4],evt.tag[3],evt.tag[2],evt.tag[1],evt.tag[0]);
-            }
+                if (last_tag != long_tag)
+                {
+                    last_tag = long_tag;
+                    uint32_t tick1 = esp_cpu_get_cycle_count();
 
+                    sprintf(str, "0x%010" PRIX64, long_tag);
+                    ssd1306_display_text(&dev, 0, str, 12, 0);
+                    // ESP_LOGI(TAG, "tag: %#llx, ticks: %ld", long_tag, esp_cpu_get_cycle_count() - tick1);
+                }                
+
+            }
         }
     }
 }
 
-// bool IRAM_ATTR on_timer_alarm(gptimer_handle_t t, const gptimer_alarm_event_data_t *edata, void *user_ctx)
-// {
-//     static uint8_t bit = 0, clk = 0;
-
-//     uint8_t level = ((tag1 >> (63-bit)) & 1) ^ clk;
-//     if (clk > 0)
-//         bit = (bit + 1) % 64;
-//     clk = !clk;
-    
-//     gpio_set_level(COIL_OUTPUT_PIN, level);
-//     gpio_set_level(LED_PIN, level);
-//     return false;
-// }
-
 void button_interrupt_handler(void *arg)
 {
+    static uint32_t last_tick = 0;
+    gpio_intr_disable(BUTTON_PIN);
+    uint32_t current_tick = esp_cpu_get_cycle_count();
+    
+    if ((current_tick - last_tick)  < 250 * CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ * 1000 )
+    {
+        gpio_intr_enable(BUTTON_PIN);
+        return;
+    }    
+    last_tick = current_tick;
+
+    gpio_intr_enable(BUTTON_PIN);
     BaseType_t woken = pdFALSE;
     xSemaphoreGiveFromISR(modeSwitchSem, &woken);
     if (woken == pdTRUE) {
         // If giving the semaphore woke a higher‐priority task, yield now
         portYIELD_FROM_ISR();
     }
-
+    
 }
 
 static void mode_switch_task(void *params)
 {
-    uint8_t mode = READ_MODE;
+    uint8_t mode = TRANSMIT_MODE;
 
     for (;;)
     {
@@ -181,14 +182,37 @@ void raw_tag_to_rmt(rmt_symbol_word_t *rmtArr, uint64_t rawTag)
     }
 }
 
+#define tag "SSD1306"
 
 void app_main(void)
 {
+    
+	int center, top, bottom;
+
+    #if CONFIG_I2C_INTERFACE
+	ESP_LOGI(tag, "INTERFACE is i2c");
+	ESP_LOGI(tag, "CONFIG_SDA_GPIO=%d",CONFIG_SDA_GPIO);
+	ESP_LOGI(tag, "CONFIG_SCL_GPIO=%d",CONFIG_SCL_GPIO);
+	ESP_LOGI(tag, "CONFIG_RESET_GPIO=%d",CONFIG_RESET_GPIO);
+	i2c_master_init(&dev, CONFIG_SDA_GPIO, CONFIG_SCL_GPIO, CONFIG_RESET_GPIO);
+#endif // CONFIG_I2C_INTERFACE
+
+#if CONFIG_FLIP
+	dev._flip = true;
+	ESP_LOGW(tag, "Flip upside down");
+#endif
+
+#if CONFIG_SSD1306_128x64
+	ESP_LOGI(tag, "Panel is 128x64");
+	ssd1306_init(&dev, 128, 64);
+#endif
+	ssd1306_clear_screen(&dev, false);
+	ssd1306_contrast(&dev, 0xff);  
+
+
     gpio_set_direction(COIL_VCC_PIN, GPIO_MODE_OUTPUT);
     gpio_set_level(COIL_VCC_PIN, 0);  
-
-    gpio_set_direction(COIL_OUTPUT_PIN, GPIO_MODE_OUTPUT);
- 
+    gpio_set_direction(COIL_OUTPUT_PIN, GPIO_MODE_OUTPUT); 
 //-----------------------------------------------------------------------------
 // LEDC Setup and Start
 // Coil signal source
@@ -237,7 +261,7 @@ void app_main(void)
     // ESP_ERROR_CHECK(gptimer_start(signalTimer));
 
     // Create the queue. 
-    inputIsrEvtQueue = xQueueCreate(100, sizeof(rfid_read_event_t));
+    inputIsrEvtQueue = xQueueCreate(200, sizeof(rfid_read_event_t));
     if (inputIsrEvtQueue == NULL)
     {
         ESP_LOGE(TAG, "Failed to create event queue");
@@ -259,7 +283,7 @@ void app_main(void)
 
 //Button GPIO interrupt setup
     gpio_config_t buttonState_config = {
-        .intr_type = GPIO_INTR_NEGEDGE, 
+        .intr_type = GPIO_INTR_POSEDGE, 
         .mode = GPIO_MODE_INPUT,
         .pin_bit_mask = (1ULL << BUTTON_PIN),
         .pull_up_en = GPIO_PULLUP_ENABLE,     
@@ -268,8 +292,6 @@ void app_main(void)
     ESP_ERROR_CHECK(gpio_config(&buttonState_config));
     // Install GPIO ISR service and add the handler for our pin.    
     ESP_ERROR_CHECK(gpio_isr_handler_add(BUTTON_PIN, button_interrupt_handler, (void *)BUTTON_PIN));
-
-
 //-----------------------------------------------------------------------------
 // LED pin setup
     gpio_config_t led_io = {
@@ -278,7 +300,6 @@ void app_main(void)
         .pull_up_en = GPIO_PULLUP_ENABLE, // Enable pull-up if needed
         .pull_down_en = GPIO_PULLDOWN_DISABLE};
     ESP_ERROR_CHECK(gpio_config(&led_io));
-
 //-----------------------------------------------------------------------------
 //RMT TX tag transmit
     rmt_tx_channel_config_t tx_chan_config = {
@@ -291,20 +312,13 @@ void app_main(void)
     };
     
     ESP_ERROR_CHECK(rmt_new_tx_channel(&tx_chan_config, &tx_chan));
-    // ESP_ERROR_CHECK(rmt_enable(tx_chan));
-    
-    // raw_tag_to_rmt(pulse_pattern, tag1);
-    // rmt_symbol_word_t carrier_pattern[64];
-
-
-    rmt_copy_encoder_config_t copy_cfg = {};
-    
+    rmt_copy_encoder_config_t copy_cfg = {};    
     ESP_ERROR_CHECK(rmt_new_copy_encoder(&copy_cfg, &copy_enc));
     // ESP_ERROR_CHECK(rmt_transmit(tx_chan, copy_enc, pulse_pattern, sizeof(pulse_pattern), &trans_config));
     // ESP_ERROR_CHECK(rmt_transmit(tx_chan, copy_enc, &carrier_pattern, sizeof(carrier_pattern), &trans_config));
     //-----------------------------------------------------------------------------
     // Create a task to process the deferred events.
-    xTaskCreate(rfid_deferred_task, "rfid_deferred_task", 2048, NULL, 1, NULL);
+    xTaskCreate(rfid_deferred_task, "rfid_deferred_task", 3048, NULL, 1, NULL);
 
     //-----------------------------------------------------------------------------
     // Create semaphore for mode switching
@@ -313,4 +327,6 @@ void app_main(void)
     // Create the worker task
     xTaskCreate(mode_switch_task, "mode_switch", 2048, 0, 10, NULL);
     // ESP_ERROR_CHECK(rmt_disable(tx_chan));
+    xSemaphoreGive(modeSwitchSem);
+
 }

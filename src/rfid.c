@@ -28,7 +28,7 @@ void IRAM_ATTR rfid_read_isr_handler(void *arg)
     static uint32_t lastTick = 0;
     static bool lastLevel = 0;
     static manchester_t m;
-    // static uint32_t idx = 0;
+    static uint32_t idx = 0;
     gpio_intr_disable(INPUT_SIGNAL_PIN);
     uint32_t currTick = esp_cpu_get_cycle_count();
     rfid_read_event_t evt;
@@ -50,13 +50,15 @@ void IRAM_ATTR rfid_read_isr_handler(void *arg)
     // // evt.ms = esp_log_timestamp();
     lastTick = currTick;
     lastLevel = evt.level;
-    // evt.idx = idx++;
+    evt.idx = idx++;
 
     //---------------------------------------------------------------
     if ((evt.ms > PERIOD_HIGH) || (evt.ms < PERIOD_HALF_LOW))
     {
         syncErrorFunc(&m);
-        goto end;
+        // goto end;
+        gpio_intr_enable(INPUT_SIGNAL_PIN);
+        return;
     }
 
     // If Manchester sync is not established and signal state time between PREIOD_LOW and PERIOD_HIGH
@@ -156,10 +158,21 @@ void IRAM_ATTR rfid_read_isr_handler(void *arg)
                 // evt.tag[i / 2] |= ((m.tagInputBuff >> ((i + 1) * 5 + 1) ) & 0x0F) << (i % 2);
                 // ESP_LOGI(TAG, "tag:\t %#lx", tagId);
             }
+            else 
+            {
+                gpio_intr_enable(INPUT_SIGNAL_PIN);
+                return;
+            }
+        }
+        else
+        {
+            gpio_intr_enable(INPUT_SIGNAL_PIN);
+            return;
         }
     }
+
     // Enqueue the event
-end:
+// end:
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
     xQueueSendToBackFromISR(inputIsrEvtQueue, &evt, &xHigherPriorityTaskWoken);
     if (xHigherPriorityTaskWoken)
@@ -184,16 +197,17 @@ uint64_t tagId_to_raw_tag(uint8_t *tagArr)
 {
     uint64_t rawTag = 0x1FF;
     uint8_t nibbles[11]; // 10 nibbles 4 bits - data, 1 bit - parity;  last nibble 4 bits - column parity and 1 bit - stop
+    uint8_t column_parity = 0;
     for (uint8_t i = 0; i < 10; i++)
     {
-        uint8_t nibble = (tagArr[i / 2] >> 4 * (i % 2)) & 0xF;
+        uint8_t nibble = (tagArr[i / 2] >> (4 * 1 - (i % 2))) & 0xF;
         nibbles[9-i] = (nibble << 1) | parity_row_table[nibble];
-        nibbles[10] ^= nibble;
+        column_parity ^= nibble;        
     }
-    nibbles[10] &= 0xFE; // Clear bit 0 for stop bit
+    nibbles[10] &= column_parity << 1; // Clear bit 0 for stop bit
 
     for (uint8_t i = 0; i <11; i++)
-        rawTag = (rawTag << 5) | (nibbles[i]);      
+        rawTag = (rawTag << 5) | (nibbles[i] & 0x1F);      
     
     return rawTag;
 }
