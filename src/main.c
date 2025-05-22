@@ -10,7 +10,10 @@
 #include <string.h> // For memset
 #include "esp_intr_alloc.h"
 #include "nvs.h"
-#
+#include "nvs_flash.h"
+#include "esp_wifi.h"
+#include "esp_event.h"
+#include "esp_netif.h"
 #include "ssd1306.h"
 // #include "font8x8_basic.h"
 
@@ -24,6 +27,8 @@
 
 static const char *TAG = "ISR_offload";
 static const char *TAG2 = "button_offload";
+static const char *TAG3 = "wifi_scan";
+
 // gptimer_handle_t signalTimer = NULL;
 rmt_channel_handle_t tx_chan = NULL;
 rmt_encoder_handle_t copy_enc;
@@ -38,7 +43,7 @@ SSD1306_t dev;
 uint64_t tag1 = 0xff8e2001a5761700, tag2 = 0x900b7c28d;
 
 
-void raw_tag_to_rmt(rmt_symbol_word_t *rmtArr, uint64_t rawTag);
+
 
 void rfid_deferred_task(void *arg)
 {
@@ -107,14 +112,11 @@ static void mode_switch_task(void *params)
 
         if (mode == READ_MODE)
         {
-            // Disable RMT TX
-            // trans_config.loop_count = -1;
-            // ESP_LOGI(TAG2, "trying set loop to 1");
-            // ESP_ERROR_CHECK(rmt_tx_wait_all_done(tx_chan, portMAX_DELAY));
+            // Trying to disable RMT
             esp_err_t err = rmt_disable(tx_chan);
             if (err != ESP_ERR_INVALID_STATE && err != ESP_OK )
                 ESP_LOGE(TAG2, "Error occurred: %s (0x%x)", esp_err_to_name(err), err);
-            // trans_config.loop_count = -1;
+            // Set rmt symbol array to transmit 125 khz signal
             ESP_ERROR_CHECK(rmt_enable(tx_chan));
             for (uint8_t i = 0; i < 64; i++)
             {       
@@ -123,16 +125,13 @@ static void mode_switch_task(void *params)
                 pulse_pattern[i].level0     = 1;
                 pulse_pattern[i].level1     = 0;        
             } 
+            // Start RMT TX with 125 khz signal
             ESP_ERROR_CHECK(rmt_transmit(tx_chan, copy_enc, pulse_pattern, sizeof(pulse_pattern), &trans_config));
             ESP_LOGI(TAG2, "rmt tx carrier");
             // Enable coil VCC
             gpio_set_level(COIL_VCC_PIN, 1);
-            // Enable coil carrier signal LEDC
-            // ESP_ERROR_CHECK(ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, 512));
-            // ESP_ERROR_CHECK(ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0));
             // Enable GPIO input signal interrupt
             ESP_ERROR_CHECK(gpio_intr_enable(INPUT_SIGNAL_PIN));
-
             gpio_set_level(LED_PIN, 1);
         }
         else if (mode == TRANSMIT_MODE)
@@ -141,82 +140,144 @@ static void mode_switch_task(void *params)
             ESP_ERROR_CHECK(gpio_intr_disable(INPUT_SIGNAL_PIN));
             // Disable coil VCC
             gpio_set_level(COIL_VCC_PIN, 0);
-            // Disable coil carrier signal LEDC
-            // ESP_ERROR_CHECK(ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, 0));
-            // ESP_ERROR_CHECK(ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0));
-            // Enable RMT and start tx
-            // ESP_LOGI(TAG2, "trying set loop to -1");
-            // trans_config.loop_count = -1;
-            
-            raw_tag_to_rmt(pulse_pattern, tag1);
             // ESP_ERROR_CHECK(rmt_tx_wait_all_done(tx_chan, portMAX_DELAY));
-                        esp_err_t err = rmt_disable(tx_chan);
+            // Trying to disable RMT 
+            esp_err_t err = rmt_disable(tx_chan);
+            // Set raw tag into rmt symbol array 
+            raw_tag_to_rmt(pulse_pattern, tag1);
+            // Start RMT TX
             if (err != ESP_ERR_INVALID_STATE && err != ESP_OK )
                 ESP_LOGE(TAG2, "Error occurred: %s (0x%x)", esp_err_to_name(err), err);
-            ESP_ERROR_CHECK(rmt_enable(tx_chan));
-            // trans_config.loop_count = -1;
+            ESP_ERROR_CHECK(rmt_enable(tx_chan));            
             ESP_ERROR_CHECK(rmt_transmit(tx_chan, copy_enc, pulse_pattern, sizeof(pulse_pattern), &trans_config));
             ESP_LOGI(TAG2, "rmt tx tag");
             gpio_set_level(LED_PIN, 0);
         }
+        // Test display scrolling on button
+        const char* list[] = {"zero","first","second","third","forth","fifth","sixth","seventh","eigth" ,"nineth", "tenth", "eleventh","EEEEOOOO"};        
+        const uint8_t disp_rows = 7, list_size= sizeof(list)/sizeof(&list);  
+        uint8_t str_size[list_size];
+        for (int i = 0; i < list_size; i++)
+        {
+            str_size[i] = strlen(list[i]);            
+        }
+
+        static int8_t pos = 0, frame_top_pos = 0;
+        pos++;
+        if (pos > list_size - 1)
+            pos = 0;
+        if (pos > frame_top_pos + disp_rows)
+        {
+            frame_top_pos = pos - disp_rows;
+            ssd1306_clear_screen(&dev, false);
+        }
+        else if (pos < frame_top_pos)
+        {
+            frame_top_pos = pos;
+            ssd1306_clear_screen(&dev, false);
+        }
+
+        // ssd1306_clear_screen(&dev, false);
+        for (int i = 0; i <= disp_rows; i++)
+        {            
+            ssd1306_display_text(&dev, i, list[i+frame_top_pos], str_size[i+frame_top_pos], (i+frame_top_pos) == pos ? 1 : 0);
+        }
+
     }
 }
 
-void raw_tag_to_rmt(rmt_symbol_word_t *rmtArr, uint64_t rawTag)
+
+static void wifi_event_handler(void* arg, esp_event_base_t event_base,
+                               int32_t event_id, void* event_data)
 {
-    for (uint8_t i = 0; i < 64; i++)
-    {
-        uint8_t bit = rawTag >> (63 - i) & 1;
-        if (bit > 0)
-        {
-            rmtArr[i].level0 = 0;
-            rmtArr[i].level1 = 1;
+    if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_SCAN_DONE) {
+        uint16_t ap_count = 0;
+        esp_wifi_scan_get_ap_num(&ap_count);
+        wifi_ap_record_t *ap_records = malloc(sizeof(wifi_ap_record_t) * ap_count);
+        esp_wifi_scan_get_ap_records(&ap_count, ap_records);
+
+        ESP_LOGI(TAG, "Total APs scanned = %d", ap_count);
+        for (int i = 0; i < ap_count; i++) {
+            ESP_LOGI(TAG3, "SSID \t\t%s", ap_records[i].ssid);
+            ESP_LOGI(TAG3, "BSSID \t\t%x:%x:%x:%x:%x:%x",   ap_records[i].bssid[0],
+                                                            ap_records[i].bssid[1],
+                                                            ap_records[i].bssid[2],
+                                                            ap_records[i].bssid[3],
+                                                            ap_records[i].bssid[4],
+                                                            ap_records[i].bssid[5]);
+            ESP_LOGI(TAG3, "RSSI \t\t%d", ap_records[i].rssi);
+            ESP_LOGI(TAG3, "Authmode \t%d", ap_records[i].authmode);
         }
-        else
-        {
-            rmtArr[i].level0 = 1;
-            rmtArr[i].level1 = 0;
-        }
-        rmtArr[i].duration0 = 256;
-        rmtArr[i].duration1 = 256;
+        free(ap_records);
     }
 }
+
 
 #define tag "SSD1306"
-
 void app_main(void)
 {
-    
-	int center, top, bottom;
 
-    #if CONFIG_I2C_INTERFACE
+    //-----------------------------------------------------
+#if CONFIG_I2C_INTERFACE
 	ESP_LOGI(tag, "INTERFACE is i2c");
 	ESP_LOGI(tag, "CONFIG_SDA_GPIO=%d",CONFIG_SDA_GPIO);
 	ESP_LOGI(tag, "CONFIG_SCL_GPIO=%d",CONFIG_SCL_GPIO);
 	ESP_LOGI(tag, "CONFIG_RESET_GPIO=%d",CONFIG_RESET_GPIO);
 	i2c_master_init(&dev, CONFIG_SDA_GPIO, CONFIG_SCL_GPIO, CONFIG_RESET_GPIO);
 #endif // CONFIG_I2C_INTERFACE
-
 #if CONFIG_FLIP
 	dev._flip = true;
 	ESP_LOGW(tag, "Flip upside down");
 #endif
-
 #if CONFIG_SSD1306_128x64
 	ESP_LOGI(tag, "Panel is 128x64");
 	ssd1306_init(&dev, 128, 64);
 #endif
 	ssd1306_clear_screen(&dev, false);
 	ssd1306_contrast(&dev, 0xff);  
-
-
+    //-----------------------------------------------------
     gpio_set_direction(COIL_VCC_PIN, GPIO_MODE_OUTPUT);
     gpio_set_level(COIL_VCC_PIN, 0);  
-    gpio_set_direction(COIL_OUTPUT_PIN, GPIO_MODE_OUTPUT); 
-//-----------------------------------------------------------------------------
-// LEDC Setup and Start
-// Coil signal source
+    gpio_set_direction(COIL_OUTPUT_PIN, GPIO_MODE_OUTPUT);
+    //-----------------------------------------------------
+    // 1. Initialize NVS
+    esp_err_t ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES ||
+        ret == ESP_ERR_NVS_NEW_VERSION_FOUND)
+    {
+        nvs_flash_erase();
+        nvs_flash_init();
+    }
+    // 2. Init TCP/IP and default STA
+    esp_netif_init();
+    esp_event_loop_create_default();
+    esp_netif_create_default_wifi_sta();
 
+    // 3. Init Wi-Fi with default config
+    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    esp_wifi_init(&cfg);
+
+    // 4. Register our scan-done handler
+    esp_event_handler_instance_register(WIFI_EVENT, WIFI_EVENT_SCAN_DONE,
+                                        &wifi_event_handler, NULL, NULL);
+
+    // 5. Set Wi-Fi mode to Station
+    esp_wifi_set_mode(WIFI_MODE_STA);
+
+    // 6. Start Wi-Fi
+    esp_wifi_start();
+
+    // 7. Kick off an active scan on all channels
+    wifi_scan_config_t scan_cfg = {
+        .ssid = NULL,       // scan for all SSIDs
+        .bssid = NULL,      // scan for all BSSIDs
+        .channel = 0,       // 0 = scan all channels
+        .show_hidden = true // include hidden SSIDs
+    };
+    esp_wifi_scan_start(&scan_cfg, false);
+    //-----------------------------------------------------------------------------
+    // LEDC Setup and Start
+    // Was Coil signal source
     ledc_timer_config_t ledc_timer = {
         .speed_mode       = LEDC_HIGH_SPEED_MODE,
         .timer_num        = LEDC_TIMER_0,
@@ -329,4 +390,5 @@ void app_main(void)
     // ESP_ERROR_CHECK(rmt_disable(tx_chan));
     xSemaphoreGive(modeSwitchSem);
 
-}
+    
+}   

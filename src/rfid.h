@@ -1,6 +1,7 @@
 #ifndef RFID_H
 #define RFID_H
 #include "freertos/FreeRTOS.h"
+#include <hal/rmt_types.h>
 
 extern QueueHandle_t inputIsrEvtQueue;
 
@@ -24,7 +25,8 @@ typedef struct
 
 char* int_to_char_bin(char* str, uint64_t num);
 void rfid_read_isr_handler(void *arg);
-uint64_t tagId_to_raw_tag(uint8_t *tagArr)
+uint64_t tagId_to_raw_tag(uint8_t *tagArr);
+void raw_tag_to_rmt(rmt_symbol_word_t *rmtArr, uint64_t rawTag);
 
 
 #endif

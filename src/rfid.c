@@ -212,3 +212,22 @@ uint64_t tagId_to_raw_tag(uint8_t *tagArr)
     return rawTag;
 }
 
+void raw_tag_to_rmt(rmt_symbol_word_t *rmtArr, uint64_t rawTag)
+{
+    for (uint8_t i = 0; i < 64; i++)
+    {
+        uint8_t bit = rawTag >> (63 - i) & 1;
+        if (bit > 0)
+        {
+            rmtArr[i].level0 = 0;
+            rmtArr[i].level1 = 1;
+        }
+        else
+        {
+            rmtArr[i].level0 = 1;
+            rmtArr[i].level1 = 0;
+        }
+        rmtArr[i].duration0 = 256;
+        rmtArr[i].duration1 = 256;
+    }
+}
