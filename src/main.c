@@ -7,27 +7,29 @@
 #include "driver/gptimer.h"
 #include "esp_log.h"
 #include <inttypes.h>
-#include <string.h> // For memset
+#include <string.h>
 #include "esp_intr_alloc.h"
 #include "nvs.h"
 #include "nvs_flash.h"
 #include "esp_wifi.h"
 #include "esp_event.h"
 #include "esp_netif.h"
+#include "esp_flash.h"
 #include "ssd1306.h"
 // #include "font8x8_basic.h"
-
+#include "esp_littlefs.h"
 #include "rfid.h"
+
 
 #define ESP_INTR_FLAG_DEFAULT   0
 #define READ_MODE               0
 #define TRANSMIT_MODE           1
-
 #define RMT_SIZE 64
 
 static const char *TAG = "ISR_offload";
 static const char *TAG2 = "button_offload";
 static const char *TAG3 = "wifi_scan";
+static const char *TAG4 = "littleFS";
 
 // gptimer_handle_t signalTimer = NULL;
 rmt_channel_handle_t tx_chan = NULL;
@@ -41,8 +43,6 @@ rmt_symbol_word_t pulse_pattern[RMT_SIZE];
 SemaphoreHandle_t modeSwitchSem;
 SSD1306_t dev;
 uint64_t tag1 = 0xff8e2001a5761700, tag2 = 0x900b7c28d;
-
-
 
 
 void rfid_deferred_task(void *arg)
@@ -66,7 +66,8 @@ void rfid_deferred_task(void *arg)
 
                     sprintf(str, "0x%010" PRIX64, long_tag);
                     ssd1306_display_text(&dev, 0, str, 12, 0);
-                    // ESP_LOGI(TAG, "tag: %#llx, ticks: %ld", long_tag, esp_cpu_get_cycle_count() - tick1);
+                    ESP_LOGI(TAG, "tag: %#llx, idx: %ld", long_tag, evt.idx);
+                    ESP_LOGI(TAG, "str: %s", int_to_char_bin(str,evt.buf));
                 }                
 
             }
@@ -186,7 +187,6 @@ static void mode_switch_task(void *params)
     }
 }
 
-
 static void wifi_event_handler(void* arg, esp_event_base_t event_base,
                                int32_t event_id, void* event_data)
 {
@@ -224,6 +224,7 @@ void app_main(void)
 	ESP_LOGI(tag, "CONFIG_SCL_GPIO=%d",CONFIG_SCL_GPIO);
 	ESP_LOGI(tag, "CONFIG_RESET_GPIO=%d",CONFIG_RESET_GPIO);
 	i2c_master_init(&dev, CONFIG_SDA_GPIO, CONFIG_SCL_GPIO, CONFIG_RESET_GPIO);
+
 #endif // CONFIG_I2C_INTERFACE
 #if CONFIG_FLIP
 	dev._flip = true;
@@ -252,7 +253,7 @@ void app_main(void)
     esp_netif_init();
     esp_event_loop_create_default();
     esp_netif_create_default_wifi_sta();
-
+    
     // 3. Init Wi-Fi with default config
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     esp_wifi_init(&cfg);
@@ -275,52 +276,7 @@ void app_main(void)
         .show_hidden = true // include hidden SSIDs
     };
     esp_wifi_scan_start(&scan_cfg, false);
-    //-----------------------------------------------------------------------------
-    // LEDC Setup and Start
-    // Was Coil signal source
-    ledc_timer_config_t ledc_timer = {
-        .speed_mode       = LEDC_HIGH_SPEED_MODE,
-        .timer_num        = LEDC_TIMER_0,
-        .duty_resolution  = LEDC_TIMER_2_BIT, // 1-bit resolution for 50% duty
-        .freq_hz          = 125000,           // 125 kHz frequency
-        .clk_cfg          = LEDC_AUTO_CLK
-    };
-    ESP_ERROR_CHECK(ledc_timer_config(&ledc_timer));
-    ledc_channel_config_t ledc_channel = {
-        .speed_mode     = LEDC_HIGH_SPEED_MODE,
-        .channel        = LEDC_CHANNEL_0,
-        .timer_sel      = LEDC_TIMER_0,
-        .intr_type      = LEDC_INTR_DISABLE,
-        .gpio_num       = COIL_OUTPUT_PIN,       // Replace with your desired GPIO
-        .duty           = 2,                 // 50% duty cycle for 1-bit resolution
-        .hpoint         = 0
-    };
-    // ESP_ERROR_CHECK(ledc_channel_config(&ledc_channel));
-    // ESP_ERROR_CHECK(ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, 512));
 //-----------------------------------------------------------------------------
-// General Purpouse Timer Setup
-// Timer for impulse time counting
-    // gptimer_config_t timer_config = {
-    //     .clk_src = GPTIMER_CLK_SRC_DEFAULT,
-    //     .direction = GPTIMER_COUNT_UP,
-    //     .resolution_hz = 1000000, // 1MHz, 1 tick=1us
-    // };
-    // ESP_ERROR_CHECK(gptimer_new_timer(&timer_config, &signalTimer));
-    // // Configure the timer alarm to trigger 
-    //  gptimer_alarm_config_t alarm_config = {
-    //     .alarm_count = 256,  // Set the alarm value to trigger interrupt
-    //     .reload_count = 0,                 // No need to reload the timer after alarm trigger
-    //     .flags.auto_reload_on_alarm = true, // The timer counts up
-
-    // };
-    // gptimer_event_callbacks_t cbs ={
-    //     .on_alarm = on_timer_alarm,
-    // };
-    // ESP_ERROR_CHECK(gptimer_set_alarm_action(signalTimer, &alarm_config));
-    // ESP_ERROR_CHECK(gptimer_register_event_callbacks(signalTimer, &cbs, NULL));
-    // ESP_ERROR_CHECK(gptimer_enable(signalTimer));    
-    // ESP_ERROR_CHECK(gptimer_start(signalTimer));
-
     // Create the queue. 
     inputIsrEvtQueue = xQueueCreate(200, sizeof(rfid_read_event_t));
     if (inputIsrEvtQueue == NULL)
@@ -375,13 +331,12 @@ void app_main(void)
     ESP_ERROR_CHECK(rmt_new_tx_channel(&tx_chan_config, &tx_chan));
     rmt_copy_encoder_config_t copy_cfg = {};    
     ESP_ERROR_CHECK(rmt_new_copy_encoder(&copy_cfg, &copy_enc));
-    // ESP_ERROR_CHECK(rmt_transmit(tx_chan, copy_enc, pulse_pattern, sizeof(pulse_pattern), &trans_config));
-    // ESP_ERROR_CHECK(rmt_transmit(tx_chan, copy_enc, &carrier_pattern, sizeof(carrier_pattern), &trans_config));
-    //-----------------------------------------------------------------------------
+
+//-----------------------------------------------------------------------------
     // Create a task to process the deferred events.
     xTaskCreate(rfid_deferred_task, "rfid_deferred_task", 3048, NULL, 1, NULL);
 
-    //-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
     // Create semaphore for mode switching
     modeSwitchSem = xSemaphoreCreateBinary();
     configASSERT(modeSwitchSem != NULL);
@@ -390,5 +345,36 @@ void app_main(void)
     // ESP_ERROR_CHECK(rmt_disable(tx_chan));
     xSemaphoreGive(modeSwitchSem);
 
-    
+
+//-----------------------------------------------------------------------------
+    //LittleFS 
+    esp_vfs_littlefs_conf_t conf = {
+        .base_path = "/littlefs",
+        .partition_label = "littlefs",
+        .format_if_mount_failed = true,
+        .dont_mount = false,
+    };
+    ret = esp_vfs_littlefs_register(&conf);
+
+    if (ret != ESP_OK)
+    {
+        if (ret == ESP_FAIL)
+            ESP_LOGE(TAG4, "Failed to mount or format filesystem");
+        else if (ret == ESP_ERR_NOT_FOUND)
+            ESP_LOGE(TAG4, "Failed to find LittleFS partition");
+        else
+            ESP_LOGE(TAG4, "Failed to initialize LittleFS (%s)", esp_err_to_name(ret));
+        return;
+    }
+
+    size_t total = 0, used = 0;
+        ret = esp_littlefs_info(conf.partition_label, &total, &used);
+        if (ret != ESP_OK)
+        {
+                ESP_LOGE(TAG4, "Failed to get LittleFS partition information (%s)", esp_err_to_name(ret));
+        }
+        else
+        {
+                ESP_LOGI(TAG4, "Partition size: total: %d, used: %d", total, used);
+        }
 }   

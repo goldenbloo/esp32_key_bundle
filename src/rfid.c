@@ -11,7 +11,6 @@ void inline syncErrorFunc(manchester_t *m)
 {
     m->checkNextEdge = false;
     m->bitIsReady = false;
-    m->checkNextEdge = false;
     m->tagInputBuff = 0;
 }
 
@@ -79,8 +78,12 @@ void IRAM_ATTR rfid_read_isr_handler(void *arg)
         // Set currentBit = !lastBit
         if (evt.ms > PERIOD_LOW)
         {
-            if (m.checkNextEdge)
+            if (m.checkNextEdge) // shouldn’t happen: we expected a half-edge but got a full one
+            {
                 syncErrorFunc(&m);
+                gpio_intr_enable(INPUT_SIGNAL_PIN);
+                return;
+            }
             m.currentBit = !m.lastBit;
             m.bitIsReady = true;
             // gpio_set_level(LED_PIN, m.currentBit);
@@ -99,7 +102,11 @@ void IRAM_ATTR rfid_read_isr_handler(void *arg)
             }
         }
         else
+        {
             syncErrorFunc(&m);
+            gpio_intr_enable(INPUT_SIGNAL_PIN);
+            return;
+        }                    
     }
     // We are reading full tag with start and stop bits first into a buffer and then check if all is good
     if (m.bitIsReady)
@@ -154,9 +161,17 @@ void IRAM_ATTR rfid_read_isr_handler(void *arg)
                     nibbles[i] = (m.tagInputBuff >> shift) & 0x0F;
                 }
                 for (uint8_t byte = 0; byte < 5; byte++)                
-                    evt.tag[byte] = (nibbles[2 * byte + 1] << 4) | (nibbles[2 * byte]);                
+                    evt.tag[byte] = (nibbles[2 * byte + 1] << 4) | (nibbles[2 * byte]);
+                m.tagInputBuff = 0;                
                 // evt.tag[i / 2] |= ((m.tagInputBuff >> ((i + 1) * 5 + 1) ) & 0x0F) << (i % 2);
                 // ESP_LOGI(TAG, "tag:\t %#lx", tagId);
+                gpio_intr_enable(INPUT_SIGNAL_PIN);
+                BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+                xQueueSendToBackFromISR(inputIsrEvtQueue, &evt, &xHigherPriorityTaskWoken);
+                if (xHigherPriorityTaskWoken)
+                {
+                    portYIELD_FROM_ISR();
+                }
             }
             else 
             {
@@ -173,13 +188,7 @@ void IRAM_ATTR rfid_read_isr_handler(void *arg)
 
     // Enqueue the event
 // end:
-    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-    xQueueSendToBackFromISR(inputIsrEvtQueue, &evt, &xHigherPriorityTaskWoken);
-    if (xHigherPriorityTaskWoken)
-    {
-        gpio_intr_enable(INPUT_SIGNAL_PIN);
-        portYIELD_FROM_ISR();
-    }
+    
     gpio_intr_enable(INPUT_SIGNAL_PIN);
 }
 
