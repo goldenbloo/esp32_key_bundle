@@ -9,6 +9,12 @@
         "ssd1306.h": "c",
         "i2c_master.h": "c",
         "esp_flash.h": "c",
-        "esp_littlefs.h": "c"
+        "esp_littlefs.h": "c",
+        "gpio.h": "c",
+        "*.c_old": "c",
+        "compare": "c",
+        "cstdint": "c",
+        "format": "c",
+        "esp_timer.h": "c"
     }
 }
