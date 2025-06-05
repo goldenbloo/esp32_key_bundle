@@ -15,6 +15,12 @@
         "compare": "c",
         "cstdint": "c",
         "format": "c",
-        "esp_timer.h": "c"
+        "esp_timer.h": "c",
+        "stdarg.h": "c",
+        "gptimer.h": "c",
+        "macros.h": "c",
+        "rmt_tx.h": "c",
+        "task.h": "c",
+        "random": "c"
     }
 }

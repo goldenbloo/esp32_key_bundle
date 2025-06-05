@@ -24,21 +24,16 @@
 #include <esp_timer.h>
 
 #define ESP_INTR_FLAG_DEFAULT   0
-#define READ_MODE               0
-#define TRANSMIT_MODE           1
-#define RMT_SIZE                64
+
+
 #define DATA_FILE_PATH "/littlefs/locations.dat"
 
 
-
-
-
-
 static const char *TAG = "ISR_offload";
-static const char *TAG2 = "button_offload";
 static const char *TAG3 = "wifi_scan";
 static const char *TAG4 = "littleFS";
 static const char *TAG5 = "SSD1306";
+esp_err_t err;
 
 // gptimer_handle_t signalTimer = NULL;
 rmt_channel_handle_t tx_chan = NULL;
@@ -49,10 +44,14 @@ rmt_transmit_config_t trans_config  = {
         .flags.queue_nonblocking = true,
     };
 rmt_symbol_word_t pulse_pattern[RMT_SIZE];
-SemaphoreHandle_t modeSwitchSem, scanSem, scanDoneSem, rfidDoneSem;
-SSD1306_t dev;
+SemaphoreHandle_t scanSem, scanDoneSem, rfidDoneSem;
+SSD1306_t dev; 
+SSD1306_t* devPtr = &dev;
+
 uint64_t tag1 = 0xff8e2001a5761700, tag2 = 0x900b7c28d, currentTag;
-QueueHandle_t uartQueue, actionQueue;
+QueueHandle_t uartQueue, uiEventQueue, modeSwitchQueue;
+TaskHandle_t uiHandlerTask = NULL;
+esp_timer_handle_t confirmation_timer_handle, display_delay_timer_handle;
 
 
 void rfid_deferred_task(void *arg)
@@ -78,7 +77,11 @@ void rfid_deferred_task(void *arg)
                 //     ESP_LOGI(TAG, "tag: %#llx, idx: %ld", long_tag, evt.idx);
                 //     ESP_LOGI(TAG, "str: %s", int_to_char_bin(str,evt.buf));
                 // }                
-                xSemaphoreGive(rfidDoneSem);
+                // xSemaphoreGive(rfidDoneSem);
+                char event = EVT_RFID_SCAN_DONE;
+                xQueueSendToBack(uiEventQueue, &event, pdMS_TO_TICKS(15));
+                disable_rx_tx_tag();
+                // xSemaphoreGive()
             }
         }
     }
@@ -108,65 +111,67 @@ void button_interrupt_handler(void *arg)
     
 }
 
-static void mode_switch_task(void *params)
-{
-    uint8_t mode = TRANSMIT_MODE;
 
-    for (;;)
-    {
-        // Wait indefinitely for a button press event
-        if (xSemaphoreTake(modeSwitchSem, portMAX_DELAY) == pdTRUE)
-        {
-            // Toggle mode
-            mode = (mode == READ_MODE) ? TRANSMIT_MODE : READ_MODE;
 
-            if (mode == READ_MODE)
-            {
-                // Trying to disable RMT
-                esp_err_t err = rmt_disable(tx_chan);
-                if (err != ESP_ERR_INVALID_STATE && err != ESP_OK)
-                    ESP_LOGE(TAG2, "Error occurred: %s (0x%x)", esp_err_to_name(err), err);
-                // Set rmt symbol array to transmit 125 khz signal
-                ESP_ERROR_CHECK(rmt_enable(tx_chan));
-                for (uint8_t i = 0; i < 64; i++)
-                {
-                    pulse_pattern[i].duration0 = 4;
-                    pulse_pattern[i].duration1 = 4;
-                    pulse_pattern[i].level0 = 1;
-                    pulse_pattern[i].level1 = 0;
-                }
-                // Start RMT TX with 125 khz signal
-                ESP_ERROR_CHECK(rmt_transmit(tx_chan, copy_enc, pulse_pattern, sizeof(pulse_pattern), &trans_config));
-                ESP_LOGI(TAG2, "rmt tx carrier");
-                // Enable coil VCC
-                gpio_set_level(COIL_VCC_PIN, 1);
-                // Enable GPIO input signal interrupt
-                ESP_ERROR_CHECK(gpio_intr_enable(INPUT_SIGNAL_PIN));
-                gpio_set_level(LED_PIN, 1);
-            }
-            else if (mode == TRANSMIT_MODE)
-            {
-                // Disable GPIO input signal interrupt
-                ESP_ERROR_CHECK(gpio_intr_disable(INPUT_SIGNAL_PIN));
-                // Disable coil VCC
-                gpio_set_level(COIL_VCC_PIN, 0);
-                // ESP_ERROR_CHECK(rmt_tx_wait_all_done(tx_chan, portMAX_DELAY));
-                // Trying to disable RMT
-                esp_err_t err = rmt_disable(tx_chan);
-                // Set raw tag into rmt symbol array
-                raw_tag_to_rmt(pulse_pattern, tag1);
-                // Start RMT TX
-                if (err != ESP_ERR_INVALID_STATE && err != ESP_OK)
-                    ESP_LOGE(TAG2, "Error occurred: %s (0x%x)", esp_err_to_name(err), err);
-                ESP_ERROR_CHECK(rmt_enable(tx_chan));
-                ESP_ERROR_CHECK(rmt_transmit(tx_chan, copy_enc, pulse_pattern, sizeof(pulse_pattern), &trans_config));
-                ESP_LOGI(TAG2, "rmt tx tag");
-                gpio_set_level(LED_PIN, 0);
-            }
-            // list_test(&dev);
-        }
-    }
-}
+// void mode_switch_task(void *params)
+// {
+//     uint8_t mode = TRANSMIT_MODE;
+
+//     for (;;)
+//     {
+//         // Wait indefinitely for a button press event
+//         if(xQueueReceive(modeSwitchQueue, (void * )&mode, (TickType_t)portMAX_DELAY)) 
+//         {
+//             // Toggle mode
+//             // mode = (mode == READ_MODE) ? TRANSMIT_MODE : READ_MODE;
+
+//             if (mode == READ_MODE)
+//             {
+//                 // Trying to disable RMT
+//                 esp_err_t err = rmt_disable(tx_chan);
+//                 if (err != ESP_ERR_INVALID_STATE && err != ESP_OK)
+//                     ESP_LOGE(TAG2, "Error occurred: %s (0x%x)", esp_err_to_name(err), err);
+//                 // Set rmt symbol array to transmit 125 khz signal
+//                 ESP_ERROR_CHECK(rmt_enable(tx_chan));
+//                 for (uint8_t i = 0; i < 64; i++)
+//                 {
+//                     pulse_pattern[i].duration0 = 4;
+//                     pulse_pattern[i].duration1 = 4;
+//                     pulse_pattern[i].level0 = 1;
+//                     pulse_pattern[i].level1 = 0;
+//                 }
+//                 // Start RMT TX with 125 khz signal
+//                 ESP_ERROR_CHECK(rmt_transmit(tx_chan, copy_enc, pulse_pattern, sizeof(pulse_pattern), &trans_config));
+//                 ESP_LOGI(TAG2, "rmt tx carrier");
+//                 // Enable coil VCC
+//                 gpio_set_level(COIL_VCC_PIN, 1);
+//                 // Enable GPIO input signal interrupt
+//                 ESP_ERROR_CHECK(gpio_intr_enable(INPUT_SIGNAL_PIN));
+//                 gpio_set_level(LED_PIN, 1);
+//             }
+//             else if (mode == TRANSMIT_MODE)
+//             {
+//                 // Disable GPIO input signal interrupt
+//                 ESP_ERROR_CHECK(gpio_intr_disable(INPUT_SIGNAL_PIN));
+//                 // Disable coil VCC
+//                 gpio_set_level(COIL_VCC_PIN, 0);
+//                 // ESP_ERROR_CHECK(rmt_tx_wait_all_done(tx_chan, portMAX_DELAY));
+//                 // Trying to disable RMT
+//                 esp_err_t err = rmt_disable(tx_chan);
+//                 // Set raw tag into rmt symbol array
+//                 raw_tag_to_rmt(pulse_pattern, tag1);
+//                 // Start RMT TX
+//                 if (err != ESP_ERR_INVALID_STATE && err != ESP_OK)
+//                     ESP_LOGE(TAG2, "Error occurred: %s (0x%x)", esp_err_to_name(err), err);
+//                 ESP_ERROR_CHECK(rmt_enable(tx_chan));
+//                 ESP_ERROR_CHECK(rmt_transmit(tx_chan, copy_enc, pulse_pattern, sizeof(pulse_pattern), &trans_config));
+//                 ESP_LOGI(TAG2, "rmt tx tag");
+//                 gpio_set_level(LED_PIN, 0);
+//             }
+//             // list_test(&dev);
+//         }
+//     }
+// }
 
 static void scan_wifi_and_tag(void *params)
 {
@@ -217,7 +222,7 @@ static void scan_wifi_and_tag(void *params)
                 }
                 ssd1306_bitmaps(&dev,0,55,save_cancel_image,128,8,false);
                 //Display wifi records. Max 5 lines
-                display_wifi_aps(&dev, ap_records, ap_count);
+                ssd1306_display_wifi_aps(ap_records, ap_count, 0);
                 ssd1306_display_text(&dev,5,"Reading tag ", 12 , false);
                 //Read and display RFID tag
                 if (xSemaphoreTake(rfidDoneSem, pdMS_TO_TICKS(30000)) == pdTRUE)
@@ -235,12 +240,12 @@ static void scan_wifi_and_tag(void *params)
                     ssd1306_display_text(&dev, 5, "Read timeout", 12, 0);
                 }
                 // Wait for buttons
-                char action;
+                char key;
                 for (;;)
                 {
-                    if (xQueueReceive(actionQueue, &action,pdMS_TO_TICKS(30000)) == pdTRUE)
+                    if (xQueueReceive(uiEventQueue, &key,pdMS_TO_TICKS(30000)) == pdTRUE)
                     {
-                        switch (action)
+                        switch (key)
                         {
                         case ACTION_LEFT:
                             ssd1306_bitmaps(&dev,0,55,save_cancel_image,128,8,false); // Save
@@ -259,7 +264,7 @@ static void scan_wifi_and_tag(void *params)
                         }    
                     }
                 }
-exit1:          display_loc_save(&dev, actionQueue);
+exit1:          display_loc_save(uiEventQueue);
                 free(ap_records);
             }
         }
@@ -270,7 +275,10 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t e
 {
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_SCAN_DONE)
     {
-        xSemaphoreGive(scanDoneSem);
+        // xSemaphoreGive(scanDoneSem);
+        char key = EVT_WIFI_SCAN_DONE;
+        xQueueSendToBack(uiEventQueue, &key, pdMS_TO_TICKS(15));
+
     }
 }
 
@@ -397,52 +405,60 @@ void uart_event_task(void *pvParameters)
 {
     uart_event_t event;
     char msg[17] = {0};
-    char textBuffer[17] = {0};
-    for(;;) {
+    // char textBuffer[25] = {0};
+    for(;;) 
+    {
         // Waiting for UART event.
-        if(xQueueReceive(uartQueue, (void * )&event, (TickType_t)portMAX_DELAY)) {            
-            switch(event.type) {
+        if(xQueueReceive(uartQueue, (void * )&event, (TickType_t)portMAX_DELAY)) 
+        {            
+            switch(event.type) 
+            {
                 case UART_DATA:
                     if (uart_read_bytes(UART_NUM_0, msg, event.size, portMAX_DELAY) > -1)
                     {
-                        char action = msg[0];
-                        if (action >= 0x30 && action <= 0x39)
-                        {
-                            action -= 0x30;
-                            keypad_button_press(action, textBuffer, sizeof(textBuffer), &dev);
-                        }
-                        else if (action == 0x08)
-                        {
-                            action = 10;
-                            keypad_button_press(action, textBuffer, sizeof(textBuffer), &dev);
-                        }
+                        char key = -1;
+                        // if (key >= 0x30 && key <= 0x39)
+                        // {
+                        //     key -= 0x30;
+                        //     keypad_button_press(key, textBuffer, sizeof(textBuffer), &dev);
+                        // }
+                        // else if (key == 0x08)                       
+                        //     keypad_button_press(10, textBuffer, sizeof(textBuffer), &dev);                        
+                        // else if (key == '*')
+                        //     keypad_button_press(11, textBuffer, sizeof(textBuffer), &dev);
 
-                        // char action = 0;
-                        // switch (msg[0])
-                        // {
-                        // case 'w': // UP
-                        //     action = ACTION_UP;
-                        //     break;
-                        // case 's': // DOWN
-                        //     action = ACTION_DOWN;
-                        //     break;
-                        // case 'a': // LEFT
-                        //     action = ACTION_LEFT;
-                        //     break;
-                        // case 'd': // RIGHT
-                        //     action = ACTION_RIGHT;
-                        //     break;
-                        // case 0xD: // RIGHT
-                        //     action = ACTION_ENTER;
-                        //     break;
-                        
-                        // default:
-                        //     break;
-                        // }
-                        // if (xQueueSendToBack(actionQueue, &action, pdMS_TO_TICKS(15) != pdPASS))
-                        // {
-                        //     ESP_LOGI(localTAG,"Can't send action to a queue");
-                        // }
+                        switch (msg[0])
+                        {
+                        case 'w': // UP
+                            key = KEY_UP;
+                            break;
+                        case 's': // DOWN
+                            key = KEY_DOWN;
+                            break;
+                        case 'a': // LEFT
+                            key = KEY_LEFT;
+                            break;
+                        case 'd': // RIGHT
+                            key = KEY_RIGHT;
+                            break;
+                        case 0xD: // RIGHT
+                            key = KEY_ENTER;
+                            break;
+                        case 0x8: //BACK
+                            key = KEY_BACK;
+                            break;
+
+                        default:
+                            if (msg[0] >= 0x30 && msg[0] <= 0x39)                            
+                                key = msg[0] - 0x30;                            
+                            break;                            
+                        }
+                        // if (key >= 0)
+                        // ESP_LOGI("UART", "Key: %d", key);
+                        if (xQueueSendToBack(uiEventQueue, &key, pdMS_TO_TICKS(15))!= pdPASS)
+                            {
+                                // ESP_LOGI(localTAG,"Can't send key to a queue");
+                            }
                     }
                     // Process received data
                     break;
@@ -466,12 +482,12 @@ void uart_event_task(void *pvParameters)
     vTaskDelete(NULL);
 }
 
-void textbox_dispay(void *pvParameters)
-{
-    for (int i = 0; i < 4; i++)
-    ssd1306_display_text_box1(&dev, 1, 0, "A very long message that's not fits", 10, 35, false, 5);
-    vTaskDelete(NULL);
-}
+// void textbox_dispay(void *pvParameters)
+// {
+//     for (int i = 0; i < 4; i++)
+//     ssd1306_display_text_box1(&dev, 1, 0, "A very long message that's not fits", 10, 35, false, 5);
+//     vTaskDelete(NULL);
+// }
 
 
 
@@ -488,32 +504,29 @@ void app_main(void)
     ssd1306_display_text(&dev, 0, "hello", 5, false);
     //-----------------------------------------------------
 
-//  esp_timer_create_args_t confirmation_timer_args = {
-//             .callback = &confirmation_timer_callback,
-//             .name = "t9_confirmation_timer"
-//     };
-//     esp_err_t err = esp_timer_create(&confirmation_timer_args, &confirmation_timer_handle);
-//     if (err != ESP_OK) {
-//         ESP_LOGE(TAG, "Failed to create confirmation timer: %s", esp_err_to_name(err));
-//         return;
-//     }
 //-----------------------------------------------------------------------------
     // Create the queue. 
-    inputIsrEvtQueue = xQueueCreate(50, sizeof(rfid_read_event_t));
+    inputIsrEvtQueue = xQueueCreate(20, sizeof(rfid_read_event_t));
     if (inputIsrEvtQueue == NULL)
     {
         ESP_LOGE(TAG, "Failed to create event queue");
         return;
     }
-    actionQueue = xQueueCreate(10, sizeof(char));
-    if (actionQueue == NULL)
+    uiEventQueue = xQueueCreate(10, sizeof(char));
+    if (uiEventQueue == NULL)
     {
-        ESP_LOGE(TAG, "Failed to create action queue");
+        ESP_LOGE(TAG, "Failed to create key queue");
+        return;
+    }
+    modeSwitchQueue = xQueueCreate(5, sizeof(uint8_t));
+    if (modeSwitchQueue == NULL)
+    {
+        ESP_LOGE(TAG, "Failed to create key queue");
         return;
     }
 
 //-----------------------------------------------------------------------------
-gpio_pins_init();
+    gpio_pins_init();
 //-----------------------------------------------------------------------------
 //RMT TX tag transmit
     rmt_tx_channel_config_t tx_chan_config = {
@@ -530,34 +543,34 @@ gpio_pins_init();
     ESP_ERROR_CHECK(rmt_new_copy_encoder(&copy_cfg, &copy_enc));
 //-----------------------------------------------------------------------------
     // Create a task to process the deferred events.
-    xTaskCreate(rfid_deferred_task, "rfid_deferred_task", 3048, NULL, 2, NULL);    
+    xTaskCreate(rfid_deferred_task, "rfid_deferred_task", 2048, NULL, 2, NULL);    
 //-----------------------------------------------------------------------------
     // Create semaphores
-    modeSwitchSem = xSemaphoreCreateBinary();
+    // modeSwitchSem = xSemaphoreCreateBinary();
     scanSem = xSemaphoreCreateBinary();
     scanDoneSem = xSemaphoreCreateBinary();
     rfidDoneSem = xSemaphoreCreateBinary();
-    configASSERT(modeSwitchSem != NULL);
+    // configASSERT(modeSwitchSem != NULL);
     configASSERT(scanSem != NULL);
     configASSERT(scanDoneSem != NULL);
     configASSERT(rfidDoneSem != NULL);
 
     // Create the worker task
-    xTaskCreate(mode_switch_task, "mode_switch", 2048, 0, 0, NULL);
-    xTaskCreate(scan_wifi_and_tag, "scan_wifi_&_tag", 4096, 0, 1, NULL);
+    // xTaskCreate(mode_switch_task, "mode_switch", 2048, 0, 0, NULL);
+    // xTaskCreate(scan_wifi_and_tag, "scan_wifi_&_tag", 4096, 0, 1, NULL);
     // ESP_ERROR_CHECK(rmt_disable(tx_chan));
-    xSemaphoreGive(modeSwitchSem);
+    // xSemaphoreGive(modeSwitchSem);
 //-----------------------------------------------------------------------------
     //LittleFS
     littlefs_init();
 //-----------------------------------------------------------------------------
     uart_config_t uart_config = {
-    .baud_rate = 115200,
-    .data_bits = UART_DATA_8_BITS,
-    .parity    = UART_PARITY_DISABLE,
-    .stop_bits = UART_STOP_BITS_1,
-    .flow_ctrl = UART_HW_FLOWCTRL_DISABLE
-};
+        .baud_rate = 115200,
+        .data_bits = UART_DATA_8_BITS,
+        .parity = UART_PARITY_DISABLE,
+        .stop_bits = UART_STOP_BITS_1,
+        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE};
+
     uart_param_config(UART_NUM_0, &uart_config);
     const int uart_buffer_size = (1024 * 2);
     uart_set_pin(UART_NUM_0, GPIO_NUM_1, GPIO_NUM_3, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
@@ -572,10 +585,24 @@ gpio_pins_init();
         .name = "keypad_timer",
         .arg = &dev,            
         };
-    esp_err_t err = esp_timer_create(&confirmation_timer_args, &confirmation_timer_handle);
+    err = esp_timer_create(&confirmation_timer_args, &confirmation_timer_handle);
     if (err != ESP_OK)
     {
         ESP_LOGE(TAG, "Failed to create confirmation timer: %s", esp_err_to_name(err));
         return;
     }
+
+    const esp_timer_create_args_t display_delay_timer_args = {
+        .callback = &display_delay_timer_callback,
+        .name = "display_delay",                    
+        };
+    err = esp_timer_create(&display_delay_timer_args, &display_delay_timer_handle);
+    if (err != ESP_OK)
+    {
+        ESP_LOGE(TAG, "Failed to create confirmation timer: %s", esp_err_to_name(err));
+        return;
+    }
+    xTaskCreate(ui_handler_task, "ui_handler_task", 4096, NULL, 2, &uiHandlerTask);
+    
+    
 }

@@ -3,6 +3,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/gpio.h"
+#include "driver/rmt_tx.h"
+#include "esp_log.h"
 #include "macros.h"
 
 QueueHandle_t inputIsrEvtQueue = NULL;
@@ -239,4 +241,59 @@ void raw_tag_to_rmt(rmt_symbol_word_t *rmtArr, uint64_t rawTag)
         rmtArr[i].duration0 = 256;
         rmtArr[i].duration1 = 256;
     }
+}
+
+void enable_read_tag()
+{
+    const char* TAG = "enable read tag";
+    esp_err_t err = rmt_disable(tx_chan);
+    if (err != ESP_ERR_INVALID_STATE && err != ESP_OK)
+        ESP_LOGE(TAG, "Error occurred: %s (0x%x)", esp_err_to_name(err), err);
+    // Set rmt symbol array to transmit 125 khz signal
+    ESP_ERROR_CHECK(rmt_enable(tx_chan));
+    for (uint8_t i = 0; i < 64; i++)
+    {
+        pulse_pattern[i].duration0 = 4;
+        pulse_pattern[i].duration1 = 4;
+        pulse_pattern[i].level0 = 1;
+        pulse_pattern[i].level1 = 0;
+    }
+    // Start RMT TX with 125 khz signal
+    ESP_ERROR_CHECK(rmt_transmit(tx_chan, copy_enc, pulse_pattern, sizeof(pulse_pattern), &trans_config));
+    ESP_LOGI(TAG, "rmt tx carrier");
+    // Enable coil VCC
+    gpio_set_level(COIL_VCC_PIN, 1);
+    // Enable GPIO input signal interrupt
+    ESP_ERROR_CHECK(gpio_intr_enable(INPUT_SIGNAL_PIN));
+    gpio_set_level(LED_PIN, 1);
+}
+
+void enable_tx_tag(uint64_t tag)
+{
+    const char* TAG = "enable tx tag";
+    // Disable GPIO input signal interrupt
+    ESP_ERROR_CHECK(gpio_intr_disable(INPUT_SIGNAL_PIN));
+    // Disable coil VCC
+    gpio_set_level(COIL_VCC_PIN, 0);
+    // ESP_ERROR_CHECK(rmt_tx_wait_all_done(tx_chan, portMAX_DELAY));
+    // Trying to disable RMT
+    esp_err_t err = rmt_disable(tx_chan);
+    // Set raw tag into rmt symbol array
+    raw_tag_to_rmt(pulse_pattern, tag);
+    // Start RMT TX
+    if (err != ESP_ERR_INVALID_STATE && err != ESP_OK)
+        ESP_LOGE(TAG, "Error occurred: %s (0x%x)", esp_err_to_name(err), err);
+    ESP_ERROR_CHECK(rmt_enable(tx_chan));
+    ESP_ERROR_CHECK(rmt_transmit(tx_chan, copy_enc, pulse_pattern, sizeof(pulse_pattern), &trans_config));
+    ESP_LOGI(TAG, "rmt tx tag");
+    gpio_set_level(LED_PIN, 0);
+}
+
+void disable_rx_tx_tag()
+{
+    const char* TAG = "diasable tx tag";
+    ESP_ERROR_CHECK(gpio_intr_disable(INPUT_SIGNAL_PIN));
+    gpio_set_level(COIL_VCC_PIN, 0);
+    esp_err_t err = rmt_disable(tx_chan);
+    gpio_set_level(LED_PIN, 0);
 }

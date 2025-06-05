@@ -11,11 +11,15 @@
 #define PERIOD_HALF_LOW   140
 #define PERIOD_HALF_HIGH  386
 
-#define ACTION_LEFT             'L'
-#define ACTION_RIGHT            'R'
-#define ACTION_UP               'U'
-#define ACTION_DOWN             'D'
-#define ACTION_ENTER            'E'
+#define RMT_SIZE          64
+#define READ_MODE         0
+#define TRANSMIT_MODE     1
+
+#define ACTION_LEFT         'L'
+#define ACTION_RIGHT        'R'
+#define ACTION_UP           'U'
+#define ACTION_DOWN         'D'
+#define ACTION_ENTER        'E'
 #define ACTION_0            '0'
 #define ACTION_1            '7'
 #define ACTION_2            '8'
@@ -26,3 +30,10 @@
 #define ACTION_7            '1'
 #define ACTION_8            '2'
 #define ACTION_9            '3'
+
+// typedef enum
+// {
+//     ABORT,
+//     RFID_SCAN_DONE,
+
+// } notify_e;
