@@ -36,7 +36,7 @@ char* int_to_char_bin(char* str, uint64_t num);
 void rfid_read_isr_handler(void *arg);
 uint64_t tagId_to_raw_tag(uint8_t *tagArr);
 void raw_tag_to_rmt(rmt_symbol_word_t *rmtArr, uint64_t rawTag);
-void enable_read_tag();
+void enable_rx_tag();
 void enable_tx_tag(uint64_t tag);
 void disable_rx_tx_tag();
 

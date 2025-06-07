@@ -31,9 +31,5 @@
 #define ACTION_8            '2'
 #define ACTION_9            '3'
 
-// typedef enum
-// {
-//     ABORT,
-//     RFID_SCAN_DONE,
-
-// } notify_e;
+#define FIELD_SIZE          30
+#define MENU_STACK_SIZE     10

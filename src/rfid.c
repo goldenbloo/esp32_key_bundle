@@ -243,8 +243,9 @@ void raw_tag_to_rmt(rmt_symbol_word_t *rmtArr, uint64_t rawTag)
     }
 }
 
-void enable_read_tag()
+void enable_rx_tag()
 {
+   
     const char* TAG = "enable read tag";
     esp_err_t err = rmt_disable(tx_chan);
     if (err != ESP_ERR_INVALID_STATE && err != ESP_OK)
