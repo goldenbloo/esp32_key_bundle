@@ -33,3 +33,5 @@
 
 #define FIELD_SIZE          30
 #define MENU_STACK_SIZE     10
+#define BSSID_MAX           5
+#define LOC_MATCH_MAX       3

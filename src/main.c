@@ -22,6 +22,7 @@
 #include "rfid.h"
 #include "menus.h"
 #include <esp_timer.h>
+#include "littlefs_records.h"
 
 #define ESP_INTR_FLAG_DEFAULT   0
 
@@ -49,6 +50,7 @@ SSD1306_t dev;
 SSD1306_t* devPtr = &dev;
 
 uint64_t tag1 = 0xff8e2001a5761700, tag2 = 0x900b7c28d, currentTag;
+uint8_t currentTagArray[5];
 QueueHandle_t uartQueue, uiEventQueue, modeSwitchQueue;
 TaskHandle_t uiHandlerTask = NULL;
 esp_timer_handle_t confirmation_timer_handle, display_delay_timer_handle;
@@ -69,6 +71,7 @@ void rfid_deferred_task(void *arg)
                 for (uint8_t i = 0; i < 5; i++)
                     long_tag |= ((uint64_t)evt.tag[i] << (8 * i));
                 currentTag = long_tag;
+                memcpy(currentTagArray, evt.tag, sizeof(currentTagArray));
                 // if (last_tag != long_tag)
                 // {
                 //     last_tag = long_tag;
@@ -78,7 +81,7 @@ void rfid_deferred_task(void *arg)
                 //     ESP_LOGI(TAG, "str: %s", int_to_char_bin(str,evt.buf));
                 // }                
                 // xSemaphoreGive(rfidDoneSem);
-                char event = EVT_RFID_SCAN_DONE;
+                int32_t event = EVT_RFID_SCAN_DONE;
                 xQueueSendToBack(uiEventQueue, &event, pdMS_TO_TICKS(15));
                 disable_rx_tx_tag();
                 // xSemaphoreGive()
@@ -159,7 +162,7 @@ void button_interrupt_handler(void *arg)
 //                 // Trying to disable RMT
 //                 esp_err_t err = rmt_disable(tx_chan);
 //                 // Set raw tag into rmt symbol array
-//                 raw_tag_to_rmt(pulse_pattern, tag1);
+//                 rfid_raw_tag_to_rmt(pulse_pattern, tag1);
 //                 // Start RMT TX
 //                 if (err != ESP_ERR_INVALID_STATE && err != ESP_OK)
 //                     ESP_LOGE(TAG2, "Error occurred: %s (0x%x)", esp_err_to_name(err), err);
@@ -173,110 +176,102 @@ void button_interrupt_handler(void *arg)
 //     }
 // }
 
-static void scan_wifi_and_tag(void *params)
-{
-     static const uint8_t save_cancel_image[] = {// 'Untitled-1', 128x8px
-0xff, 0xff, 0x87, 0xff, 0xff, 0xff, 0xff, 0xfe, 0x80, 0x03, 0xc0, 0x00, 0x00, 0x00, 0x07, 0x00, 
-0xff, 0xff, 0x33, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x06, 0x60, 0x00, 0x00, 0x00, 0x03, 0x00, 
-0xff, 0xff, 0x1f, 0x87, 0x33, 0x87, 0xff, 0xfe, 0x80, 0x0c, 0x07, 0x8f, 0x87, 0x87, 0x83, 0x00, 
-0xff, 0xff, 0x8f, 0xf3, 0x33, 0x33, 0xff, 0xff, 0x00, 0x0c, 0x00, 0xcc, 0xcc, 0xcc, 0xc3, 0x00, 
-0xff, 0xff, 0xe3, 0x83, 0x33, 0x03, 0xff, 0xfe, 0x80, 0x0c, 0x07, 0xcc, 0xcc, 0x0f, 0xc3, 0x00, 
-0xff, 0xff, 0x33, 0x33, 0x87, 0x3f, 0xff, 0xff, 0x00, 0x06, 0x6c, 0xcc, 0xcc, 0xcc, 0x03, 0x00, 
-0xff, 0xff, 0x87, 0x89, 0xcf, 0x87, 0xff, 0xfe, 0x80, 0x03, 0xc7, 0x6c, 0xc7, 0x87, 0x87, 0x80, 
-0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-    for (;;)
-    {
-        if (xSemaphoreTake(scanSem, portMAX_DELAY) == pdTRUE)
-        {
-            wifi_scan_config_t scan_cfg = {
-                .ssid = NULL,       // scan for all SSIDs
-                .bssid = NULL,      // scan for all BSSIDs
-                .channel = 0,       // 0 = scan all channels
-                .show_hidden = true // include hidden SSIDs
-            };
-            esp_err_t err = esp_wifi_scan_start(&scan_cfg, false);
-            if (err != ESP_OK)
-            {
-                ESP_LOGE(TAG, "esp_wifi_scan_start: %s", esp_err_to_name(err));
-                continue;
-            }
-            //Wait for wifi scan
-            if (xSemaphoreTake(scanDoneSem, pdMS_TO_TICKS(10000)) == pdTRUE)
-            {
-                uint16_t ap_count = 0;
-                esp_wifi_scan_get_ap_num(&ap_count);
-                wifi_ap_record_t *ap_records = malloc(sizeof(wifi_ap_record_t) * ap_count);
-                esp_wifi_scan_get_ap_records(&ap_count, ap_records);
-                ESP_LOGI(TAG, "Total APs scanned = %d", ap_count);
-                for (int i = 0; i < ap_count; i++)
-                {
-                    ESP_LOGI(TAG3, "SSID \t\t%s", ap_records[i].ssid);
-                    ESP_LOGI(TAG3, "BSSID \t\t%02x:%02x:%02x:%02x:%02x:%02x", ap_records[i].bssid[0],
-                             ap_records[i].bssid[1],
-                             ap_records[i].bssid[2],
-                             ap_records[i].bssid[3],
-                             ap_records[i].bssid[4],
-                             ap_records[i].bssid[5]);
-                    ESP_LOGI(TAG3, "RSSI \t\t%d", ap_records[i].rssi);
-                    ESP_LOGI(TAG3, "Authmode \t%d", ap_records[i].authmode);
-                }
-                ssd1306_bitmaps(&dev,0,55,save_cancel_image,128,8,false);
-                //Display wifi records. Max 5 lines
-                ssd1306_display_wifi_aps(ap_records, ap_count, 0);
-                ssd1306_display_text(&dev,5,"Reading tag ", 12 , false);
-                //Read and display RFID tag
-                if (xSemaphoreTake(rfidDoneSem, pdMS_TO_TICKS(30000)) == pdTRUE)
-                {
-                    char str[16];
-                    sprintf(str, "0x%010" PRIX64, currentTag);
-                    ssd1306_clear_line(&dev,5,false);
-                    ssd1306_clear_line(&dev,6,false);                                       
-                    ssd1306_display_text(&dev, 5, "Success", 7, 0);
-                    ssd1306_display_text(&dev, 6, str, 12, 0);                     
-                }
-                else
-                {
-                    ssd1306_clear_line(&dev,5,false);
-                    ssd1306_display_text(&dev, 5, "Read timeout", 12, 0);
-                }
-                // Wait for buttons
-                char key;
-                for (;;)
-                {
-                    if (xQueueReceive(uiEventQueue, &key,pdMS_TO_TICKS(30000)) == pdTRUE)
-                    {
-                        switch (key)
-                        {
-                        case ACTION_LEFT:
-                            ssd1306_bitmaps(&dev,0,55,save_cancel_image,128,8,false); // Save
-                            break;
+// static void scan_wifi_and_tag(void *params)
+// {
+     
+//     for (;;)
+//     {
+//         if (xSemaphoreTake(scanSem, portMAX_DELAY) == pdTRUE)
+//         {
+//             wifi_scan_config_t scan_cfg = {
+//                 .ssid = NULL,       // scan for all SSIDs
+//                 .bssid = NULL,      // scan for all BSSIDs
+//                 .channel = 0,       // 0 = scan all channels
+//                 .show_hidden = true // include hidden SSIDs
+//             };
+//             esp_err_t err = esp_wifi_scan_start(&scan_cfg, false);
+//             if (err != ESP_OK)
+//             {
+//                 ESP_LOGE(TAG, "esp_wifi_scan_start: %s", esp_err_to_name(err));
+//                 continue;
+//             }
+//             //Wait for wifi scan
+//             if (xSemaphoreTake(scanDoneSem, pdMS_TO_TICKS(10000)) == pdTRUE)
+//             {
+//                 uint16_t ap_count = 0;
+//                 esp_wifi_scan_get_ap_num(&ap_count);
+//                 wifi_ap_record_t *ap_records = malloc(sizeof(wifi_ap_record_t) * ap_count);
+//                 esp_wifi_scan_get_ap_records(&ap_count, ap_records);
+//                 ESP_LOGI(TAG, "Total APs scanned = %d", ap_count);
+//                 for (int i = 0; i < ap_count; i++)
+//                 {
+//                     ESP_LOGI(TAG3, "SSID \t\t%s", ap_records[i].ssid);
+//                     ESP_LOGI(TAG3, "BSSID \t\t%02x:%02x:%02x:%02x:%02x:%02x", ap_records[i].bssid[0],
+//                              ap_records[i].bssid[1],
+//                              ap_records[i].bssid[2],
+//                              ap_records[i].bssid[3],
+//                              ap_records[i].bssid[4],
+//                              ap_records[i].bssid[5]);
+//                     ESP_LOGI(TAG3, "RSSI \t\t%d", ap_records[i].rssi);
+//                     ESP_LOGI(TAG3, "Authmode \t%d", ap_records[i].authmode);
+//                 }
+//                 // ssd1306_bitmaps(&dev,0,55,save_cancel_image,128,8,false);
+//                 //Display wifi records. Max 5 lines
+//                 ssd1306_display_wifi_aps(ap_records, ap_count, 0);
+//                 ssd1306_display_text(&dev,5,"Reading tag ", 12 , false);
+//                 //Read and display RFID tag
+//                 if (xSemaphoreTake(rfidDoneSem, pdMS_TO_TICKS(30000)) == pdTRUE)
+//                 {
+//                     char str[16];
+//                     sprintf(str, "0x%010" PRIX64, currentTag);
+//                     ssd1306_clear_line(&dev,5,false);
+//                     ssd1306_clear_line(&dev,6,false);                                       
+//                     ssd1306_display_text(&dev, 5, "Success", 7, 0);
+//                     ssd1306_display_text(&dev, 6, str, 12, 0);                     
+//                 }
+//                 else
+//                 {
+//                     ssd1306_clear_line(&dev,5,false);
+//                     ssd1306_display_text(&dev, 5, "Read timeout", 12, 0);
+//                 }
+//                 // Wait for buttons
+//                 int32_t key;
+//                 for (;;)
+//                 {
+//                     if (xQueueReceive(uiEventQueue, &key,pdMS_TO_TICKS(30000)) == pdTRUE)
+//                     {
+//                         switch (key)
+//                         {
+//                         case ACTION_LEFT:
+//                             ssd1306_bitmaps(&dev,0,55,save_cancel_image,128,8,false); // Save
+//                             break;
 
-                        case ACTION_RIGHT:
-                            ssd1306_bitmaps(&dev,0,55,save_cancel_image,128,8,true); // Cancel4ad
-                            break;
+//                         case ACTION_RIGHT:
+//                             ssd1306_bitmaps(&dev,0,55,save_cancel_image,128,8,true); // Cancel4ad
+//                             break;
 
-                        case ACTION_ENTER:
-                            goto exit1;
-                            break;
+//                         case ACTION_ENTER:
+//                             goto exit1;
+//                             break;
                         
-                        default:
-                            break;
-                        }    
-                    }
-                }
-exit1:          display_loc_save(uiEventQueue);
-                free(ap_records);
-            }
-        }
-    }
-}
+//                         default:
+//                             break;
+//                         }    
+//                     }
+//                 }
+// exit1:          display_loc_save(uiEventQueue);
+//                 free(ap_records);
+//             }
+//         }
+//     }
+// }
 
 static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data)
 {
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_SCAN_DONE)
     {
         // xSemaphoreGive(scanDoneSem);
-        char key = EVT_WIFI_SCAN_DONE;
+        int32_t key = EVT_WIFI_SCAN_DONE;
         xQueueSendToBack(uiEventQueue, &key, pdMS_TO_TICKS(15));
 
     }
@@ -368,35 +363,7 @@ void gpio_pins_init()
     ESP_ERROR_CHECK(gpio_config(&led_io));
 }
 
-void littlefs_init()
-{
-        esp_vfs_littlefs_conf_t conf = {
-        .base_path = "/littlefs",
-        .partition_label = "littlefs",
-        .format_if_mount_failed = true,
-        .dont_mount = false,
-    };
-    esp_err_t ret = esp_vfs_littlefs_register(&conf);
 
-    if (ret != ESP_OK)
-    {
-        if (ret == ESP_FAIL)
-            ESP_LOGE(TAG4, "Failed to mount or format filesystem");
-        else if (ret == ESP_ERR_NOT_FOUND)
-            ESP_LOGE(TAG4, "Failed to find LittleFS partition");
-        else
-            ESP_LOGE(TAG4, "Failed to initialize LittleFS (%s)", esp_err_to_name(ret));
-        return;
-    }
-
-    size_t total = 0, used = 0;
-    ret = esp_littlefs_info(conf.partition_label, &total, &used);
-    if (ret != ESP_OK)
-        ESP_LOGE(TAG4, "Failed to get LittleFS partition information (%s)", esp_err_to_name(ret));
-    else
-        ESP_LOGI(TAG4, "Partition size: total: %d, used: %d", total, used);
-
-}
 
 
 
@@ -409,14 +376,15 @@ void uart_event_task(void *pvParameters)
     for(;;) 
     {
         // Waiting for UART event.
-        if(xQueueReceive(uartQueue, (void * )&event, (TickType_t)portMAX_DELAY)) 
+        if(xQueueReceive(uartQueue, (void* )&event, (TickType_t)portMAX_DELAY)) 
         {            
             switch(event.type) 
             {
                 case UART_DATA:
                     if (uart_read_bytes(UART_NUM_0, msg, event.size, portMAX_DELAY) > -1)
                     {
-                        char key = -1;
+                        int32_t key = -1;
+                        
                         // if (key >= 0x30 && key <= 0x39)
                         // {
                         //     key -= 0x30;
@@ -446,6 +414,10 @@ void uart_event_task(void *pvParameters)
                             break;
                         case 0x8: //BACK
                             key = KEY_BACK;
+                            break;
+
+                        case 'c': //Delete key
+                            key = KEY_CLEAR_CHAR;
                             break;
 
                         default:
@@ -512,7 +484,7 @@ void app_main(void)
         ESP_LOGE(TAG, "Failed to create event queue");
         return;
     }
-    uiEventQueue = xQueueCreate(10, sizeof(char));
+    uiEventQueue = xQueueCreate(10, sizeof(int32_t));
     if (uiEventQueue == NULL)
     {
         ESP_LOGE(TAG, "Failed to create key queue");
