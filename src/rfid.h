@@ -34,20 +34,14 @@ typedef struct
 
 char* int_to_char_bin(char* str, uint64_t num);
 void rfid_read_isr_handler(void *arg);
-uint64_t tagId_to_raw_tag(uint8_t *tagArr);
-void raw_tag_to_rmt(rmt_symbol_word_t *rmtArr, uint64_t rawTag);
-void enable_rx_tag();
-void enable_tx_tag(uint64_t tag);
+uint64_t rfid_tag_to_raw_tag(uint8_t *tagArr);
+void rfid_raw_tag_to_rmt(rmt_symbol_word_t *rmtArr, uint64_t rawTag);
+void rfid_enable_rx_tag();
+void rfid_enable_tx_tag(uint64_t tag);
 void disable_rx_tx_tag();
+void rfid_tag_to_array(uint64_t tag, uint8_t tagArr[]);
+uint64_t rfid_array_to_tag(uint8_t tagArr[]);
 
-
-typedef struct
-{
-  uint32_t id;
-  char locName[30];
-  uint8_t bssids[5][6];
-  int8_t rssis[5];
-} location_t;
 
 extern rmt_channel_handle_t tx_chan;
 extern rmt_encoder_handle_t copy_enc;

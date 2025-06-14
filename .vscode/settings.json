@@ -21,6 +21,8 @@
         "macros.h": "c",
         "rmt_tx.h": "c",
         "task.h": "c",
-        "random": "c"
+        "random": "c",
+        "littlefs_records.h": "c",
+        "esp_intr_alloc.h": "c"
     }
 }
