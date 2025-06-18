@@ -16,13 +16,14 @@
 #include "esp_netif.h"
 #include "esp_flash.h"
 #include "driver/uart.h"
-#include "ssd1306.h"
-// #include "font8x8_basic.h"
 #include "esp_littlefs.h"
 #include "rfid.h"
 #include "menus.h"
 #include <esp_timer.h>
 #include "littlefs_records.h"
+#include "u8g2.h"
+#include "u8g2_esp32_hal.h"
+
 
 #define ESP_INTR_FLAG_DEFAULT   0
 
@@ -31,8 +32,8 @@
 
 
 static const char *TAG = "ISR_offload";
-static const char *TAG3 = "wifi_scan";
-static const char *TAG4 = "littleFS";
+// static const char *TAG3 = "wifi_scan";
+// static const char *TAG4 = "littleFS";
 static const char *TAG5 = "SSD1306";
 esp_err_t err;
 
@@ -46,13 +47,14 @@ rmt_transmit_config_t trans_config  = {
     };
 rmt_symbol_word_t pulse_pattern[RMT_SIZE];
 SemaphoreHandle_t scanSem, scanDoneSem, rfidDoneSem;
-SSD1306_t dev; 
-SSD1306_t* devPtr = &dev;
+// SSD1306_t dev; 
+// SSD1306_t* devPtr = &dev;
+u8g2_t u8g2;
 
 uint64_t tag1 = 0xff8e2001a5761700, tag2 = 0x900b7c28d, currentTag;
 uint8_t currentTagArray[5];
 QueueHandle_t uartQueue, uiEventQueue, modeSwitchQueue;
-TaskHandle_t uiHandlerTask = NULL;
+TaskHandle_t uiHandlerTask = NULL, autoTxHandler = NULL;
 esp_timer_handle_t confirmation_timer_handle, display_delay_timer_handle;
 
 
@@ -83,7 +85,7 @@ void rfid_deferred_task(void *arg)
                 // xSemaphoreGive(rfidDoneSem);
                 int32_t event = EVT_RFID_SCAN_DONE;
                 xQueueSendToBack(uiEventQueue, &event, pdMS_TO_TICKS(15));
-                disable_rx_tx_tag();
+                rfid_disable_rx_tx_tag();
                 // xSemaphoreGive()
             }
         }
@@ -114,157 +116,6 @@ void button_interrupt_handler(void *arg)
     
 }
 
-
-
-// void mode_switch_task(void *params)
-// {
-//     uint8_t mode = TRANSMIT_MODE;
-
-//     for (;;)
-//     {
-//         // Wait indefinitely for a button press event
-//         if(xQueueReceive(modeSwitchQueue, (void * )&mode, (TickType_t)portMAX_DELAY)) 
-//         {
-//             // Toggle mode
-//             // mode = (mode == READ_MODE) ? TRANSMIT_MODE : READ_MODE;
-
-//             if (mode == READ_MODE)
-//             {
-//                 // Trying to disable RMT
-//                 esp_err_t err = rmt_disable(tx_chan);
-//                 if (err != ESP_ERR_INVALID_STATE && err != ESP_OK)
-//                     ESP_LOGE(TAG2, "Error occurred: %s (0x%x)", esp_err_to_name(err), err);
-//                 // Set rmt symbol array to transmit 125 khz signal
-//                 ESP_ERROR_CHECK(rmt_enable(tx_chan));
-//                 for (uint8_t i = 0; i < 64; i++)
-//                 {
-//                     pulse_pattern[i].duration0 = 4;
-//                     pulse_pattern[i].duration1 = 4;
-//                     pulse_pattern[i].level0 = 1;
-//                     pulse_pattern[i].level1 = 0;
-//                 }
-//                 // Start RMT TX with 125 khz signal
-//                 ESP_ERROR_CHECK(rmt_transmit(tx_chan, copy_enc, pulse_pattern, sizeof(pulse_pattern), &trans_config));
-//                 ESP_LOGI(TAG2, "rmt tx carrier");
-//                 // Enable coil VCC
-//                 gpio_set_level(COIL_VCC_PIN, 1);
-//                 // Enable GPIO input signal interrupt
-//                 ESP_ERROR_CHECK(gpio_intr_enable(INPUT_SIGNAL_PIN));
-//                 gpio_set_level(LED_PIN, 1);
-//             }
-//             else if (mode == TRANSMIT_MODE)
-//             {
-//                 // Disable GPIO input signal interrupt
-//                 ESP_ERROR_CHECK(gpio_intr_disable(INPUT_SIGNAL_PIN));
-//                 // Disable coil VCC
-//                 gpio_set_level(COIL_VCC_PIN, 0);
-//                 // ESP_ERROR_CHECK(rmt_tx_wait_all_done(tx_chan, portMAX_DELAY));
-//                 // Trying to disable RMT
-//                 esp_err_t err = rmt_disable(tx_chan);
-//                 // Set raw tag into rmt symbol array
-//                 rfid_raw_tag_to_rmt(pulse_pattern, tag1);
-//                 // Start RMT TX
-//                 if (err != ESP_ERR_INVALID_STATE && err != ESP_OK)
-//                     ESP_LOGE(TAG2, "Error occurred: %s (0x%x)", esp_err_to_name(err), err);
-//                 ESP_ERROR_CHECK(rmt_enable(tx_chan));
-//                 ESP_ERROR_CHECK(rmt_transmit(tx_chan, copy_enc, pulse_pattern, sizeof(pulse_pattern), &trans_config));
-//                 ESP_LOGI(TAG2, "rmt tx tag");
-//                 gpio_set_level(LED_PIN, 0);
-//             }
-//             // list_test(&dev);
-//         }
-//     }
-// }
-
-// static void scan_wifi_and_tag(void *params)
-// {
-     
-//     for (;;)
-//     {
-//         if (xSemaphoreTake(scanSem, portMAX_DELAY) == pdTRUE)
-//         {
-//             wifi_scan_config_t scan_cfg = {
-//                 .ssid = NULL,       // scan for all SSIDs
-//                 .bssid = NULL,      // scan for all BSSIDs
-//                 .channel = 0,       // 0 = scan all channels
-//                 .show_hidden = true // include hidden SSIDs
-//             };
-//             esp_err_t err = esp_wifi_scan_start(&scan_cfg, false);
-//             if (err != ESP_OK)
-//             {
-//                 ESP_LOGE(TAG, "esp_wifi_scan_start: %s", esp_err_to_name(err));
-//                 continue;
-//             }
-//             //Wait for wifi scan
-//             if (xSemaphoreTake(scanDoneSem, pdMS_TO_TICKS(10000)) == pdTRUE)
-//             {
-//                 uint16_t ap_count = 0;
-//                 esp_wifi_scan_get_ap_num(&ap_count);
-//                 wifi_ap_record_t *ap_records = malloc(sizeof(wifi_ap_record_t) * ap_count);
-//                 esp_wifi_scan_get_ap_records(&ap_count, ap_records);
-//                 ESP_LOGI(TAG, "Total APs scanned = %d", ap_count);
-//                 for (int i = 0; i < ap_count; i++)
-//                 {
-//                     ESP_LOGI(TAG3, "SSID \t\t%s", ap_records[i].ssid);
-//                     ESP_LOGI(TAG3, "BSSID \t\t%02x:%02x:%02x:%02x:%02x:%02x", ap_records[i].bssid[0],
-//                              ap_records[i].bssid[1],
-//                              ap_records[i].bssid[2],
-//                              ap_records[i].bssid[3],
-//                              ap_records[i].bssid[4],
-//                              ap_records[i].bssid[5]);
-//                     ESP_LOGI(TAG3, "RSSI \t\t%d", ap_records[i].rssi);
-//                     ESP_LOGI(TAG3, "Authmode \t%d", ap_records[i].authmode);
-//                 }
-//                 // ssd1306_bitmaps(&dev,0,55,save_cancel_image,128,8,false);
-//                 //Display wifi records. Max 5 lines
-//                 ssd1306_display_wifi_aps(ap_records, ap_count, 0);
-//                 ssd1306_display_text(&dev,5,"Reading tag ", 12 , false);
-//                 //Read and display RFID tag
-//                 if (xSemaphoreTake(rfidDoneSem, pdMS_TO_TICKS(30000)) == pdTRUE)
-//                 {
-//                     char str[16];
-//                     sprintf(str, "0x%010" PRIX64, currentTag);
-//                     ssd1306_clear_line(&dev,5,false);
-//                     ssd1306_clear_line(&dev,6,false);                                       
-//                     ssd1306_display_text(&dev, 5, "Success", 7, 0);
-//                     ssd1306_display_text(&dev, 6, str, 12, 0);                     
-//                 }
-//                 else
-//                 {
-//                     ssd1306_clear_line(&dev,5,false);
-//                     ssd1306_display_text(&dev, 5, "Read timeout", 12, 0);
-//                 }
-//                 // Wait for buttons
-//                 int32_t key;
-//                 for (;;)
-//                 {
-//                     if (xQueueReceive(uiEventQueue, &key,pdMS_TO_TICKS(30000)) == pdTRUE)
-//                     {
-//                         switch (key)
-//                         {
-//                         case ACTION_LEFT:
-//                             ssd1306_bitmaps(&dev,0,55,save_cancel_image,128,8,false); // Save
-//                             break;
-
-//                         case ACTION_RIGHT:
-//                             ssd1306_bitmaps(&dev,0,55,save_cancel_image,128,8,true); // Cancel4ad
-//                             break;
-
-//                         case ACTION_ENTER:
-//                             goto exit1;
-//                             break;
-                        
-//                         default:
-//                             break;
-//                         }    
-//                     }
-//                 }
-// exit1:          display_loc_save(uiEventQueue);
-//                 free(ap_records);
-//             }
-//         }
-//     }
-// }
 
 static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data)
 {
@@ -307,26 +158,32 @@ void wifi_init()
     esp_wifi_start();
 }
 
-void display_init()
-{
-#if CONFIG_I2C_INTERFACE
-    ESP_LOGI(TAG5, "INTERFACE is i2c");
-    ESP_LOGI(TAG5, "CONFIG_SDA_GPIO=%d", CONFIG_SDA_GPIO);
-    ESP_LOGI(TAG5, "CONFIG_SCL_GPIO=%d", CONFIG_SCL_GPIO);
-    ESP_LOGI(TAG5, "CONFIG_RESET_GPIO=%d", CONFIG_RESET_GPIO);
-    i2c_master_init(&dev, CONFIG_SDA_GPIO, CONFIG_SCL_GPIO, CONFIG_RESET_GPIO);
 
-#endif // CONFIG_I2C_INTERFACE
-#if CONFIG_FLIP
-    dev._flip = true;
-    ESP_LOGW(TAG5, "Flip upside down");
-#endif
-#if CONFIG_SSD1306_128x64
-    ESP_LOGI(TAG5, "Panel is 128x64");
-    ssd1306_init(&dev, 128, 64);
-#endif
-    ssd1306_clear_screen(&dev, false);
-    ssd1306_contrast(&dev, 0xff);
+
+void display_init() 
+{
+    const char* TAG = "disp_init";
+    u8g2_esp32_hal_t u8g2_esp32_hal = U8G2_ESP32_HAL_DEFAULT;
+    u8g2_esp32_hal.bus.i2c.sda = CONFIG_SDA_GPIO; // 21
+    u8g2_esp32_hal.bus.i2c.scl = CONFIG_SCL_GPIO; // 22    
+    u8g2_esp32_hal_init(u8g2_esp32_hal);    
+    u8g2_Setup_ssd1306_128x64_noname_f(&u8g2, U8G2_R0, u8g2_esp32_i2c_byte_cb, u8g2_esp32_gpio_and_delay_cb);
+    u8x8_SetI2CAddress(&u8g2.u8x8, 0x3C);
+    ESP_LOGI(TAG,"Display init");
+    u8g2_InitDisplay(&u8g2);
+    u8g2_SetPowerSave(&u8g2, 0);
+    u8g2_ClearBuffer(&u8g2);
+    // Draw a frame
+    u8g2_DrawFrame(&u8g2, 0, 0, 128, 64);
+    // Set the font
+    u8g2_SetFont(&u8g2, u8g2_font_ncenB14_tr);
+    // Display some text
+    u8g2_DrawStr(&u8g2, 2, 22, "Hello,");
+    u8g2_DrawStr(&u8g2, 2, 46, "ESP-IDF!");
+    // Draw a line
+    u8g2_DrawLine(&u8g2, 0, 32, 127, 32);
+    // Send the buffer to the display
+    u8g2_SendBuffer(&u8g2);
 }
 
 void gpio_pins_init()
@@ -362,9 +219,6 @@ void gpio_pins_init()
         .pull_down_en = GPIO_PULLDOWN_DISABLE};
     ESP_ERROR_CHECK(gpio_config(&led_io));
 }
-
-
-
 
 
 
@@ -454,12 +308,6 @@ void uart_event_task(void *pvParameters)
     vTaskDelete(NULL);
 }
 
-// void textbox_dispay(void *pvParameters)
-// {
-//     for (int i = 0; i < 4; i++)
-//     ssd1306_display_text_box1(&dev, 1, 0, "A very long message that's not fits", 10, 35, false, 5);
-//     vTaskDelete(NULL);
-// }
 
 
 
@@ -473,7 +321,7 @@ void app_main(void)
     //-----------------------------------------------------
     wifi_init();
     display_init();
-    ssd1306_display_text(&dev, 0, "hello", 5, false);
+    // ssd1306_display_text(&dev, 0, "hello", 5, false);
     //-----------------------------------------------------
 
 //-----------------------------------------------------------------------------
@@ -515,7 +363,7 @@ void app_main(void)
     ESP_ERROR_CHECK(rmt_new_copy_encoder(&copy_cfg, &copy_enc));
 //-----------------------------------------------------------------------------
     // Create a task to process the deferred events.
-    xTaskCreate(rfid_deferred_task, "rfid_deferred_task", 2048, NULL, 2, NULL);    
+    xTaskCreate(rfid_deferred_task, "rfid_deferred_task", 2048, NULL, 4, NULL);    
 //-----------------------------------------------------------------------------
     // Create semaphores
     // modeSwitchSem = xSemaphoreCreateBinary();
@@ -548,33 +396,35 @@ void app_main(void)
     uart_set_pin(UART_NUM_0, GPIO_NUM_1, GPIO_NUM_3, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
     uart_driver_install(UART_NUM_0, uart_buffer_size, 0, 10, &uartQueue, 0);
     
-    xTaskCreate(uart_event_task, "uart_receive_task", 2048, NULL, 10, NULL);
+    xTaskCreate(uart_event_task, "uart_receive_task", 2048, NULL, 2, NULL);
     // xTaskCreate(textbox_dispay, "tbt", 2048, NULL, 1, NULL);
 
 
-    const esp_timer_create_args_t confirmation_timer_args = {
-        .callback = &confirmation_timer_callback,
-        .name = "keypad_timer",
-        .arg = &dev,            
-        };
-    err = esp_timer_create(&confirmation_timer_args, &confirmation_timer_handle);
-    if (err != ESP_OK)
-    {
-        ESP_LOGE(TAG, "Failed to create confirmation timer: %s", esp_err_to_name(err));
-        return;
-    }
+    // const esp_timer_create_args_t confirmation_timer_args = {
+    //     .callback = &confirmation_timer_callback,
+    //     .name = "keypad_timer",
+    //     .arg = &dev,            
+    //     };
+    // err = esp_timer_create(&confirmation_timer_args, &confirmation_timer_handle);
+    // if (err != ESP_OK)
+    // {
+    //     ESP_LOGE(TAG, "Failed to create confirmation timer: %s", esp_err_to_name(err));
+    //     return;
+    // }
 
-    const esp_timer_create_args_t display_delay_timer_args = {
-        .callback = &display_delay_timer_callback,
-        .name = "display_delay",                    
-        };
-    err = esp_timer_create(&display_delay_timer_args, &display_delay_timer_handle);
-    if (err != ESP_OK)
-    {
-        ESP_LOGE(TAG, "Failed to create confirmation timer: %s", esp_err_to_name(err));
-        return;
-    }
-    xTaskCreate(ui_handler_task, "ui_handler_task", 4096, NULL, 2, &uiHandlerTask);
-    
+    // const esp_timer_create_args_t display_delay_timer_args = {
+    //     .callback = &display_delay_timer_callback,
+    //     .name = "display_delay",                    
+    //     };
+    // err = esp_timer_create(&display_delay_timer_args, &display_delay_timer_handle);
+    // if (err != ESP_OK)
+    // {
+    //     ESP_LOGE(TAG, "Failed to create confirmation timer: %s", esp_err_to_name(err));
+    //     return;
+    // }
+    // // xTaskCreate(ui_handler_task, "ui_handler_task", 4096, NULL, 1, &uiHandlerTask);
+
+    // xTaskCreate(tag_tx_cycle_callback, "tag_tx_cycle_callback", 2048, NULL, 0, &autoTxHandler);
+    // vTaskSuspend(autoTxHandler);    
     
 }

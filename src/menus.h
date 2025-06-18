@@ -1,6 +1,6 @@
 #ifndef MENUS_H
 #define MENUS_H
-#include "ssd1306.h"
+// #include "ssd1306.h"
 #include "esp_timer.h"
 #include "driver/rmt_tx.h"
 #include "esp_wifi.h"
@@ -113,27 +113,28 @@ typedef struct
 
 
 
-extern esp_timer_handle_t confirmation_timer_handle, display_delay_timer_handle;
-extern QueueHandle_t uiEventQueue, modeSwitchQueue;
-extern SSD1306_t* devPtr;
-extern SemaphoreHandle_t scanSem, scanDoneSem, rfidDoneSem;
-extern uint64_t currentTag;
-extern uint8_t currentTagArray[5];
-extern rmt_channel_handle_t tx_chan;
-extern rmt_encoder_handle_t copy_enc;
-extern rmt_transmit_config_t trans_config;
-extern rmt_symbol_word_t pulse_pattern[RMT_SIZE];
-extern TaskHandle_t uiHandlerTask;
+// extern esp_timer_handle_t confirmation_timer_handle, display_delay_timer_handle;
+// extern QueueHandle_t uiEventQueue, modeSwitchQueue;
+// extern SSD1306_t* devPtr;
+// extern SemaphoreHandle_t scanSem, scanDoneSem, rfidDoneSem;
+// extern uint64_t currentTag;
+// extern uint8_t currentTagArray[5];
+// extern rmt_channel_handle_t tx_chan;
+// extern rmt_encoder_handle_t copy_enc;
+// extern rmt_transmit_config_t trans_config;
+// extern rmt_symbol_word_t pulse_pattern[RMT_SIZE];
+// extern TaskHandle_t uiHandlerTask, autoTxHandler;
 
 
 
-void list_test();
-void ssd1306_display_wifi_aps(wifi_ap_record_t *ap_records, uint16_t ap_count, uint32_t startPage);
-// void display_loc_save(QueueHandle_t keyEventQueue);
-void keypad_button_press(int8_t pressedButton);
-void confirmation_timer_callback(void *arg);
-void ui_handler_task(void* args);
-void display_delay_timer_callback();
+// void list_test();
+// void ssd1306_display_wifi_aps(wifi_ap_record_t *ap_records, uint16_t ap_count, uint32_t startPage);
+// // void display_loc_save(QueueHandle_t keyEventQueue);
+// void keypad_button_press(int8_t pressedButton);
+// void confirmation_timer_callback(void *arg);
+// void ui_handler_task(void* args);
+// void display_delay_timer_callback();
+// void tag_tx_cycle_callback();
 
 
 

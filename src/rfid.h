@@ -37,8 +37,8 @@ void rfid_read_isr_handler(void *arg);
 uint64_t rfid_tag_to_raw_tag(uint8_t *tagArr);
 void rfid_raw_tag_to_rmt(rmt_symbol_word_t *rmtArr, uint64_t rawTag);
 void rfid_enable_rx_tag();
-void rfid_enable_tx_tag(uint64_t tag);
-void disable_rx_tx_tag();
+void rfid_enable_tx_raw_tag(uint64_t tag);
+void rfid_disable_rx_tx_tag();
 void rfid_tag_to_array(uint64_t tag, uint8_t tagArr[]);
 uint64_t rfid_array_to_tag(uint8_t tagArr[]);
 

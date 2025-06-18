@@ -277,7 +277,7 @@ void rfid_enable_rx_tag()
     }
     // Start RMT TX with 125 khz signal
     ESP_ERROR_CHECK(rmt_transmit(tx_chan, copy_enc, pulse_pattern, sizeof(pulse_pattern), &trans_config));
-    ESP_LOGI(TAG, "rmt tx carrier");
+    // ESP_LOGI(TAG, "rmt tx carrier");
     // Enable coil VCC
     gpio_set_level(COIL_VCC_PIN, 1);
     // Enable GPIO input signal interrupt
@@ -285,7 +285,7 @@ void rfid_enable_rx_tag()
     gpio_set_level(LED_PIN, 1);
 }
 
-void rfid_enable_tx_tag(uint64_t tag)
+void rfid_enable_tx_raw_tag(uint64_t tag)
 {
     const char* TAG = "enable tx tag";
     // Disable GPIO input signal interrupt
@@ -302,15 +302,15 @@ void rfid_enable_tx_tag(uint64_t tag)
         ESP_LOGE(TAG, "Error occurred: %s (0x%x)", esp_err_to_name(err), err);
     ESP_ERROR_CHECK(rmt_enable(tx_chan));
     ESP_ERROR_CHECK(rmt_transmit(tx_chan, copy_enc, pulse_pattern, sizeof(pulse_pattern), &trans_config));
-    ESP_LOGI(TAG, "rmt tx tag");
+    // ESP_LOGI(TAG, "rmt tx tag");
     gpio_set_level(LED_PIN, 0);
 }
 
-void disable_rx_tx_tag()
+void rfid_disable_rx_tx_tag()
 {
-    const char* TAG = "diasable tx tag";
+    // const char* TAG = "diasable tx tag";
     ESP_ERROR_CHECK(gpio_intr_disable(INPUT_SIGNAL_PIN));
     gpio_set_level(COIL_VCC_PIN, 0);
-    esp_err_t err = rmt_disable(tx_chan);
+    rmt_disable(tx_chan);
     gpio_set_level(LED_PIN, 0);
 }
