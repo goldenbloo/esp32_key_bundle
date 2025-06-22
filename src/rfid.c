@@ -204,7 +204,7 @@ char *int_to_char_bin(char *str, uint64_t num)
     return str;
 }
 
-uint64_t rfid_tag_to_raw_tag(uint8_t *tagArr)
+uint64_t rfid_arr_tag_to_raw_tag(uint8_t *tagArr)
 {
     uint64_t rawTag = 0x1FF;
     uint8_t nibbles[11]; // 10 nibbles 4 bits - data, 1 bit - parity;  last nibble 4 bits - column parity and 1 bit - stop
@@ -285,7 +285,7 @@ void rfid_enable_rx_tag()
     gpio_set_level(LED_PIN, 1);
 }
 
-void rfid_enable_tx_raw_tag(uint64_t tag)
+void rfid_enable_tx_raw_tag(uint64_t rawTag)
 {
     const char* TAG = "enable tx tag";
     // Disable GPIO input signal interrupt
@@ -296,14 +296,14 @@ void rfid_enable_tx_raw_tag(uint64_t tag)
     // Trying to disable RMT
     esp_err_t err = rmt_disable(tx_chan);
     // Set raw tag into rmt symbol array
-    rfid_raw_tag_to_rmt(pulse_pattern, tag);
+    rfid_raw_tag_to_rmt(pulse_pattern, rawTag);
     // Start RMT TX
     if (err != ESP_ERR_INVALID_STATE && err != ESP_OK)
         ESP_LOGE(TAG, "Error occurred: %s (0x%x)", esp_err_to_name(err), err);
     ESP_ERROR_CHECK(rmt_enable(tx_chan));
     ESP_ERROR_CHECK(rmt_transmit(tx_chan, copy_enc, pulse_pattern, sizeof(pulse_pattern), &trans_config));
     // ESP_LOGI(TAG, "rmt tx tag");
-    gpio_set_level(LED_PIN, 0);
+    gpio_set_level(LED_PIN, 1);
 }
 
 void rfid_disable_rx_tx_tag()

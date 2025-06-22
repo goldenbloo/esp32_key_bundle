@@ -32,12 +32,8 @@
 
 
 static const char *TAG = "ISR_offload";
-// static const char *TAG3 = "wifi_scan";
-// static const char *TAG4 = "littleFS";
-static const char *TAG5 = "SSD1306";
 esp_err_t err;
 
-// gptimer_handle_t signalTimer = NULL;
 rmt_channel_handle_t tx_chan = NULL;
 rmt_encoder_handle_t copy_enc;
 rmt_transmit_config_t trans_config  = {
@@ -47,16 +43,15 @@ rmt_transmit_config_t trans_config  = {
     };
 rmt_symbol_word_t pulse_pattern[RMT_SIZE];
 SemaphoreHandle_t scanSem, scanDoneSem, rfidDoneSem;
-// SSD1306_t dev; 
-// SSD1306_t* devPtr = &dev;
+
 u8g2_t u8g2;
 
-uint64_t tag1 = 0xff8e2001a5761700, tag2 = 0x900b7c28d, currentTag;
+uint64_t currentTag;
 uint8_t currentTagArray[5];
 QueueHandle_t uartQueue, uiEventQueue, modeSwitchQueue;
-TaskHandle_t uiHandlerTask = NULL, autoTxHandler = NULL;
+TaskHandle_t uiHandlerTask = NULL, rfidAutoTxHandler = NULL;
 esp_timer_handle_t confirmation_timer_handle, display_delay_timer_handle;
-
+ui_event_e display_delay_cb_arg;
 
 void rfid_deferred_task(void *arg)
 {
@@ -167,21 +162,22 @@ void display_init()
     u8g2_esp32_hal.bus.i2c.sda = CONFIG_SDA_GPIO; // 21
     u8g2_esp32_hal.bus.i2c.scl = CONFIG_SCL_GPIO; // 22    
     u8g2_esp32_hal_init(u8g2_esp32_hal);    
-    u8g2_Setup_ssd1306_128x64_noname_f(&u8g2, U8G2_R0, u8g2_esp32_i2c_byte_cb, u8g2_esp32_gpio_and_delay_cb);
+    u8g2_Setup_ssd1306_i2c_128x64_noname_f(&u8g2, U8G2_R0, u8g2_esp32_i2c_byte_cb, u8g2_esp32_gpio_and_delay_cb);
     u8x8_SetI2CAddress(&u8g2.u8x8, 0x3C);
     ESP_LOGI(TAG,"Display init");
     u8g2_InitDisplay(&u8g2);
     u8g2_SetPowerSave(&u8g2, 0);
     u8g2_ClearBuffer(&u8g2);
+    u8g2_SetFontPosTop(&u8g2);    
     // Draw a frame
-    u8g2_DrawFrame(&u8g2, 0, 0, 128, 64);
+    // u8g2_DrawFrame(&u8g2, 0, 0, 128, 64);
     // Set the font
-    u8g2_SetFont(&u8g2, u8g2_font_ncenB14_tr);
+    // u8g2_SetFont(&u8g2, u8g2_font_5x7_tr);
     // Display some text
-    u8g2_DrawStr(&u8g2, 2, 22, "Hello,");
-    u8g2_DrawStr(&u8g2, 2, 46, "ESP-IDF!");
-    // Draw a line
-    u8g2_DrawLine(&u8g2, 0, 32, 127, 32);
+    // u8g2_DrawStr(&u8g2, 2, 22, "Hello,");
+    // u8g2_DrawStr(&u8g2, 2, 46, "ESP-IDF!");
+    // // Draw a line
+    // u8g2_DrawLine(&u8g2, 0, 32, 127, 32);
     // Send the buffer to the display
     u8g2_SendBuffer(&u8g2);
 }
@@ -272,6 +268,9 @@ void uart_event_task(void *pvParameters)
 
                         case 'c': //Delete key
                             key = KEY_CLEAR_CHAR;
+                            break;
+                        case 'z': //Shift key
+                            key = KEY_SHIFT;
                             break;
 
                         default:
@@ -400,31 +399,31 @@ void app_main(void)
     // xTaskCreate(textbox_dispay, "tbt", 2048, NULL, 1, NULL);
 
 
-    // const esp_timer_create_args_t confirmation_timer_args = {
-    //     .callback = &confirmation_timer_callback,
-    //     .name = "keypad_timer",
-    //     .arg = &dev,            
-    //     };
-    // err = esp_timer_create(&confirmation_timer_args, &confirmation_timer_handle);
-    // if (err != ESP_OK)
-    // {
-    //     ESP_LOGE(TAG, "Failed to create confirmation timer: %s", esp_err_to_name(err));
-    //     return;
-    // }
+    const esp_timer_create_args_t confirmation_timer_args = {
+        .callback = &confirmation_timer_callback,
+        .name = "keypad_timer",                    
+        };
+    err = esp_timer_create(&confirmation_timer_args, &confirmation_timer_handle);
+    if (err != ESP_OK)
+    {
+        ESP_LOGE(TAG, "Failed to create confirmation timer: %s", esp_err_to_name(err));
+        return;
+    }
 
-    // const esp_timer_create_args_t display_delay_timer_args = {
-    //     .callback = &display_delay_timer_callback,
-    //     .name = "display_delay",                    
-    //     };
-    // err = esp_timer_create(&display_delay_timer_args, &display_delay_timer_handle);
-    // if (err != ESP_OK)
-    // {
-    //     ESP_LOGE(TAG, "Failed to create confirmation timer: %s", esp_err_to_name(err));
-    //     return;
-    // }
-    // // xTaskCreate(ui_handler_task, "ui_handler_task", 4096, NULL, 1, &uiHandlerTask);
+    const esp_timer_create_args_t display_delay_timer_args = {
+        .callback = &display_delay_timer_callback,
+        .name = "display_delay",
+        .arg = &display_delay_cb_arg,
+        };
+    err = esp_timer_create(&display_delay_timer_args, &display_delay_timer_handle);
+    if (err != ESP_OK)
+    {
+        ESP_LOGE(TAG, "Failed to create confirmation timer: %s", esp_err_to_name(err));
+        return;
+    }
+    xTaskCreate(ui_handler_task, "ui_handler_task", 4096, NULL, 1, &uiHandlerTask);
 
-    // xTaskCreate(tag_tx_cycle_callback, "tag_tx_cycle_callback", 2048, NULL, 0, &autoTxHandler);
-    // vTaskSuspend(autoTxHandler);    
+    xTaskCreate(tag_tx_cycle_callback, "tag_tx_cycle_callback", 2048, NULL, 0, &rfidAutoTxHandler);
+    vTaskSuspend(rfidAutoTxHandler);    
     
 }

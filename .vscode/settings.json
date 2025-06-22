@@ -28,6 +28,20 @@
         "u8g2.h": "c",
         "i2c.h": "c",
         "menus.h": "c",
-        "spi_master.h": "c"
+        "spi_master.h": "c",
+        "array": "c",
+        "deque": "c",
+        "string": "c",
+        "unordered_map": "c",
+        "vector": "c",
+        "string_view": "c",
+        "initializer_list": "c",
+        "span": "c",
+        "text_encoding": "c",
+        "mui_u8g2.h": "c",
+        "mui.h": "c",
+        "sstream": "c",
+        "bitmaps.h": "c",
+        "cstdlib": "c"
     }
 }

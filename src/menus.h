@@ -5,6 +5,7 @@
 #include "driver/rmt_tx.h"
 #include "esp_wifi.h"
 #include "bitmaps.h"
+#include "u8g2.h"
 #define MAX_SIZE 5
 
 typedef enum
@@ -40,6 +41,8 @@ typedef enum
     EVT_NEXT_MENU,
     EVT_KEYPAD_PRESS,
     EVT_ON_ENTRY,
+    EVT_NO_MATCH,
+    EVT_APS_NOT_FOUND,
 
 } ui_event_e;
 
@@ -58,6 +61,7 @@ typedef struct
     uint8_t listSize;
     int8_t selectedRow;
     int8_t topRowIdx;
+    int8_t maxRows;
 } menu_listbox_t;
 
 typedef struct
@@ -70,17 +74,14 @@ typedef struct
 typedef struct menu_t menu_t;
 typedef struct menu_t 
 {
-    uint16_t menuName;
-    menu_listbox_t* listBox;
+    uint16_t menuId;
     
-    uint8_t maxPages;
-    uint8_t startPage;
-
+    uint8_t startPosY;
     int8_t selectedOption;
     int32_t status;
-    
-    menu_textbox_t* textBox;  
-    
+
+    menu_listbox_t* listBox;  
+    menu_textbox_t* textBox;      
     menu_t* nextMenu;
     
     menu_t* (*event_handler_func )(int32_t event);
@@ -113,28 +114,30 @@ typedef struct
 
 
 
-// extern esp_timer_handle_t confirmation_timer_handle, display_delay_timer_handle;
-// extern QueueHandle_t uiEventQueue, modeSwitchQueue;
+extern esp_timer_handle_t confirmation_timer_handle, display_delay_timer_handle;
+extern ui_event_e display_delay_cb_arg;
+extern QueueHandle_t uiEventQueue, modeSwitchQueue;
 // extern SSD1306_t* devPtr;
-// extern SemaphoreHandle_t scanSem, scanDoneSem, rfidDoneSem;
-// extern uint64_t currentTag;
-// extern uint8_t currentTagArray[5];
-// extern rmt_channel_handle_t tx_chan;
-// extern rmt_encoder_handle_t copy_enc;
-// extern rmt_transmit_config_t trans_config;
-// extern rmt_symbol_word_t pulse_pattern[RMT_SIZE];
-// extern TaskHandle_t uiHandlerTask, autoTxHandler;
+extern SemaphoreHandle_t scanSem, scanDoneSem, rfidDoneSem;
+extern uint64_t currentTag;
+extern uint8_t currentTagArray[5];
+extern rmt_channel_handle_t tx_chan;
+extern rmt_encoder_handle_t copy_enc;
+extern rmt_transmit_config_t trans_config;
+extern rmt_symbol_word_t pulse_pattern[RMT_SIZE];
+extern TaskHandle_t uiHandlerTask, rfidAutoTxHandler;
+
+extern u8g2_t u8g2;
 
 
-
-// void list_test();
-// void ssd1306_display_wifi_aps(wifi_ap_record_t *ap_records, uint16_t ap_count, uint32_t startPage);
-// // void display_loc_save(QueueHandle_t keyEventQueue);
-// void keypad_button_press(int8_t pressedButton);
-// void confirmation_timer_callback(void *arg);
-// void ui_handler_task(void* args);
-// void display_delay_timer_callback();
-// void tag_tx_cycle_callback();
+void list_test();
+void ssd1306_display_wifi_aps(wifi_ap_record_t *ap_records, uint16_t ap_count, uint32_t startPage);
+// void display_loc_save(QueueHandle_t keyEventQueue);
+void keypad_button_press(int8_t pressedButton);
+void confirmation_timer_callback(void *arg);
+void ui_handler_task(void* args);
+void display_delay_timer_callback();
+void tag_tx_cycle_callback();
 
 
 
