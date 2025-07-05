@@ -53,9 +53,40 @@ bool append_location(const location_t *loc)
     return (written == 1);
 }
 
+bool overwrite_location(const location_t *loc)
+{
+    FILE *f = fopen("/littlefs/locations.bin", "r+b");
+    if (!f)
+    {
+        ESP_LOGE(TAG, "Failed to open file for overwrite");
+        return false;
+    }
+    long offset = (long)(loc->id - 1) * sizeof(location_t);
+    if (fseek(f, offset, SEEK_SET) != 0)
+    {
+        ESP_LOGE(TAG, "Failed to seek to record %ld", loc->id);
+        fclose(f);
+        return false;
+    }
+
+    size_t written = fwrite(loc, sizeof(location_t), 1, f);
+    fclose(f);
+
+    if (written == 1)
+    {
+        ESP_LOGI(TAG, "Overwrote record %ld, Name = %s", loc->id, loc->name);
+        return true;
+    }
+    else
+    {
+        ESP_LOGE(TAG, "Write error at record %ld", loc->id);
+        return false;
+    }
+}
+
 void clear_all_locations() 
 {
-    FILE *f = fopen("/littlefs/locations.bin", "wb");  // append-binary
+    FILE *f = fopen("/littlefs/locations.bin", "wb");  // write-binary
     if (!f) 
     {
         ESP_LOGE(TAG, "Failed to open for write");
@@ -207,6 +238,46 @@ int32_t find_multiple_best_locations(uint8_t query_bssid[][6], int8_t query_rssi
 
     fclose(f);
     return foundIdCount;
+}
+
+int32_t find_best_locations_from_scan(const wifi_ap_record_t* ap_records, int ap_count, location_t* bestLocs_out, bool singleMatch)
+{
+    const char *TAG = "find_locations";
+    int locNum = 0;
+    if (ap_count == 0) return 0; // Nothing to process    
+
+    // 1. Allocate temporary memory for BSSIDs and RSSIs
+    uint8_t (*bssids)[6] = malloc(sizeof(*bssids) * ap_count);
+    int8_t *rssis = malloc(sizeof(*rssis) * ap_count);
+
+    if (!bssids || !rssis)
+    {
+        ESP_LOGE(TAG, "Failed to allocate memory for Wi-Fi data extraction");
+        free(bssids); // free is safe to call on NULL
+        free(rssis);
+        return -1; // Return an error code
+    }
+
+    // 2. Extract the data from the records
+    for (int i = 0; i < ap_count; i++)
+    {
+        memcpy(bssids[i], ap_records[i].bssid, sizeof(ap_records[i].bssid));
+        rssis[i] = ap_records[i].rssi;
+    }
+
+    // 3. Call the core logic function
+    if (singleMatch) 
+    {
+        bool found = find_best_location(bssids, rssis, ap_count, &bestLocs_out[0]);
+        locNum = found ? 1 : 0;
+    }
+    else
+        locNum = find_multiple_best_locations(bssids, rssis, ap_count, bestLocs_out);
+    // 4. Clean up the temporary memory
+    free(bssids);
+    free(rssis);
+
+    return locNum;
 }
 
 int32_t get_next_location_id(void)

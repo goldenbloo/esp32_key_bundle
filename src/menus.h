@@ -13,7 +13,8 @@ typedef enum
     MAIN_MENU,
     TAG_SCAN,
     WIFI_SCAN,
-    DESCRIPTION_PROMPT,    
+    DESCRIPTION_PROMPT,  
+    REWRITE_MATCH_LOC_PROMPT, 
     SAVE_TAG_MENU,
     TRANSMIT_TAG_MENU,
     
@@ -43,6 +44,7 @@ typedef enum
     EVT_ON_ENTRY,
     EVT_NO_MATCH,
     EVT_APS_NOT_FOUND,
+    EVT_OVERWRITE_TAG,
 
 } ui_event_e;
 
@@ -52,6 +54,8 @@ typedef enum
     YES_OPTION,
     NO_OPTION,
     SAVE_OPTION,
+    OVERWRITE_OPTION,
+    SAVE_NEW_OPTION,
     CANCEL_OPTION,
 } option_e;
 
@@ -112,13 +116,26 @@ typedef struct
 } keypad_t;
 
 
+typedef struct 
+{
+    uint8_t x, y;
+    const uint8_t *font;
+    char* string;
+    uint16_t strWidth;
+    uint16_t delayScrollMs;
+    uint16_t delayStartStopMs;
+    bool exit;
+
+}scroll_data_t;
+
+
 
 
 extern esp_timer_handle_t confirmation_timer_handle, display_delay_timer_handle;
 extern ui_event_e display_delay_cb_arg;
 extern QueueHandle_t uiEventQueue, modeSwitchQueue;
 // extern SSD1306_t* devPtr;
-extern SemaphoreHandle_t scanSem, scanDoneSem, rfidDoneSem;
+extern SemaphoreHandle_t scanSem, scanDoneSem, rfidDoneSem, drawMutex;
 extern uint64_t currentTag;
 extern uint8_t currentTagArray[5];
 extern rmt_channel_handle_t tx_chan;
@@ -139,7 +156,7 @@ void ui_handler_task(void* args);
 void display_delay_timer_callback();
 void tag_tx_cycle_callback();
 
-
+#define u8g2_PosCenterX(u8g2, str) ((u8g2_GetDisplayWidth(&(u8g2)) / 2) - (u8g2_GetStrWidth(&(u8g2), (str)) / 2))
 
 
 #endif

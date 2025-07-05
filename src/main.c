@@ -42,7 +42,7 @@ rmt_transmit_config_t trans_config  = {
         .flags.queue_nonblocking = true,
     };
 rmt_symbol_word_t pulse_pattern[RMT_SIZE];
-SemaphoreHandle_t scanSem, scanDoneSem, rfidDoneSem;
+SemaphoreHandle_t scanSem, scanDoneSem, rfidDoneSem, drawMutex;
 
 u8g2_t u8g2;
 
@@ -369,10 +369,13 @@ void app_main(void)
     scanSem = xSemaphoreCreateBinary();
     scanDoneSem = xSemaphoreCreateBinary();
     rfidDoneSem = xSemaphoreCreateBinary();
+    drawMutex = xSemaphoreCreateMutex();    
     // configASSERT(modeSwitchSem != NULL);
     configASSERT(scanSem != NULL);
     configASSERT(scanDoneSem != NULL);
     configASSERT(rfidDoneSem != NULL);
+    configASSERT(drawMutex != NULL);
+
 
     // Create the worker task
     // xTaskCreate(mode_switch_task, "mode_switch", 2048, 0, 0, NULL);
@@ -395,7 +398,7 @@ void app_main(void)
     uart_set_pin(UART_NUM_0, GPIO_NUM_1, GPIO_NUM_3, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
     uart_driver_install(UART_NUM_0, uart_buffer_size, 0, 10, &uartQueue, 0);
     
-    xTaskCreate(uart_event_task, "uart_receive_task", 2048, NULL, 2, NULL);
+    xTaskCreate(uart_event_task, "uart_receive_task", 1024, NULL, 2, NULL);
     // xTaskCreate(textbox_dispay, "tbt", 2048, NULL, 1, NULL);
 
 
@@ -421,7 +424,7 @@ void app_main(void)
         ESP_LOGE(TAG, "Failed to create confirmation timer: %s", esp_err_to_name(err));
         return;
     }
-    xTaskCreate(ui_handler_task, "ui_handler_task", 4096, NULL, 1, &uiHandlerTask);
+    xTaskCreate(ui_handler_task, "ui_handler_task", 4096, NULL, 3, &uiHandlerTask);
 
     xTaskCreate(tag_tx_cycle_callback, "tag_tx_cycle_callback", 2048, NULL, 0, &rfidAutoTxHandler);
     vTaskSuspend(rfidAutoTxHandler);    

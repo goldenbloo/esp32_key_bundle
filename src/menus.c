@@ -12,12 +12,16 @@
 #include "littlefs_records.h"
 #include <u8g2.h>
 
+
+
+static TaskHandle_t scrollHandle;
+scroll_data_t sd;
 // Wifi records----------------------------------
 static wifi_ap_record_t ap_records[BSSID_MAX];
 static uint16_t ap_count = 0;
 // Found best locations--------------------------
 location_t bestLocs[LOC_MATCH_MAX];
-uint32_t locNum;
+uint32_t bestLocsNum;
 static char *locNameList[LOC_MATCH_MAX + 1];
 // Menu stack------------------------------------
 static menu_t* menuStack[MENU_STACK_SIZE];
@@ -45,7 +49,9 @@ keypad_t keypad = {
 .displayCharWidth= 16,
 };
 //Menus functions--------------------------------
+
 static void display_list(menu_t *menu);
+void scroll_text_task(void* arg);
 static menu_t* go_to_main_menu();
 
 static menu_t *main_menu_handle(int32_t event);
@@ -71,12 +77,17 @@ static menu_t *transmit_menu_handle(int32_t event);
 static void transmit_menu_exit();
 static void transmit_menu_draw();
 
+static void resolve_location_menu_enter();
+static menu_t* resolve_location_menu_handle(int32_t event);
+static void resolve_location_menu_exit();
+static void resolve_location_menu_draw();
+
 
 //Menus structs----------------------------------------------------------------
-char* mainMenuEntries[] = {"Read tag", "Transmit tag", "Dump records", "Delete all tags", "t", "test", "test3333333", "abcdefg"};
+char* mainMenuEntries[] = {"Read tag", "Transmit tag", "Dump records", "Search location", "Delete all tags"};
 menu_listbox_t mainMenuListBox = {
     .list = mainMenuEntries,
-    .listSize = 8,
+    .listSize =  sizeof(mainMenuEntries) / sizeof(char*),
     .selectedRow = 0,
     .maxRows = 6,
 };
@@ -94,14 +105,14 @@ menu_textbox_t saveTagMenuTextBox = {
 menu_t mainMenu = {
     .menuId = MAIN_MENU,
     .listBox = &mainMenuListBox,
-    .startPosY = 1,    
+    .startPosY = 8,    
     .draw_func = main_menu_draw,
     .event_handler_func = main_menu_handle,
     .exit_func = main_menu_exit,
 };
 menu_t scanTagMenu = {
     .menuId = TAG_SCAN,    
-    .startPosY = 1,    
+    .startPosY = 8,    
     .draw_func = scan_tag_menu_draw,
     .event_handler_func = scan_tag_menu_handle,
     .enter_func = scan_tag_menu_enter,
@@ -110,7 +121,7 @@ menu_t scanTagMenu = {
 };
 menu_t scanWifiMenu = {
     .menuId = WIFI_SCAN,    
-    .startPosY = 1,    
+    .startPosY = 8,    
     .draw_func = scan_wifi_menu_draw,
     .enter_func = scan_wifi_menu_enter,
     .event_handler_func = scan_wifi_menu_handle,
@@ -118,6 +129,19 @@ menu_t scanWifiMenu = {
     .back_handler_func = go_to_main_menu, 
 
 };
+
+menu_t resolveLocationMenu = {
+    .menuId = REWRITE_MATCH_LOC_PROMPT,    
+    .startPosY = 8,    
+
+    .draw_func = resolve_location_menu_draw,
+    .enter_func = resolve_location_menu_enter,
+    .event_handler_func = resolve_location_menu_handle,
+    .exit_func = resolve_location_menu_exit,
+    .back_handler_func = go_to_main_menu, 
+
+};
+
 menu_t saveTagMenu = {
     .menuId = SAVE_TAG_MENU,    
     .startPosY = 8,    
@@ -198,8 +222,13 @@ static menu_t* main_menu_handle(int32_t event)
         case 2: // Dump locations choice            
             read_all_locations();
             break;
+            
+        case 3: // Search location          
+            
+            break;
 
-        case 3: // Delete all locations choice            
+
+        case 4: // Delete all locations choice            
             clear_all_locations();
             break;
 
@@ -242,7 +271,7 @@ static menu_t* scan_tag_menu_handle(int32_t event)
     }
     else if (event == EVT_NEXT_MENU)
     {
-        scanWifiMenu.nextMenu = &saveTagMenu;
+        scanWifiMenu.nextMenu = &resolveLocationMenu; // Set next menu in wifi scan menu
         return &scanWifiMenu;
     }
     return NULL;
@@ -301,8 +330,7 @@ static void scan_wifi_menu_enter()
 static menu_t* scan_wifi_menu_handle(int32_t event)
 {
     const char *TAG = "wifi_handle";
-    if (scanWifiMenu.status == EVT_ON_ENTRY)
-        scanWifiMenu.status = 0;
+    if (scanWifiMenu.status == EVT_ON_ENTRY) scanWifiMenu.status = 0;
     switch (event)
     {
     case EVT_WIFI_SCAN_DONE:
@@ -368,6 +396,180 @@ static void scan_wifi_menu_draw()
     }    
     
 }
+
+static void resolve_location_menu_enter()
+{
+    resolveLocationMenu.status = EVT_ON_ENTRY;   
+    bestLocsNum = find_best_locations_from_scan(ap_records, ap_count, bestLocs, false);
+    resolveLocationMenu.selectedOption = NOT_SELECTED;
+    if (bestLocsNum == 0) 
+    {
+        resolveLocationMenu.status = EVT_NO_MATCH;
+        uint32_t event = EVT_NEXT_MENU;
+        xQueueSendToBack(uiEventQueue, &event, pdMS_TO_TICKS(15));
+    }
+    
+}
+
+static menu_t* resolve_location_menu_handle(int32_t event)
+{
+    if (resolveLocationMenu.status == EVT_ON_ENTRY) resolveLocationMenu.status = 0;
+    if (bestLocsNum > 0) // Locations are found
+    {
+        switch (event)
+        {
+        case KEY_LEFT:
+            resolveLocationMenu.selectedOption = SAVE_NEW_OPTION;
+            resolveLocationMenu.status = 0;
+            break;
+
+        case KEY_RIGHT:
+            resolveLocationMenu.selectedOption = OVERWRITE_OPTION;
+            resolveLocationMenu.status = 0;
+            break;
+
+        case KEY_ENTER:
+            switch (resolveLocationMenu.selectedOption)
+            {
+            case OVERWRITE_OPTION:
+                memcpy(bestLocs[0].tag, currentTagArray, sizeof(currentTagArray));
+                overwrite_location(&bestLocs[0]);
+                sd.exit = true;
+                resolveLocationMenu.status = EVT_OVERWRITE_TAG;                
+                display_delay_cb_arg = KEY_BACK;
+                esp_timer_start_once(display_delay_timer_handle, 3000 * 1000ULL);
+                break;
+
+            case SAVE_NEW_OPTION:
+                uint32_t evt = EVT_NEXT_MENU;
+                xQueueSendToBack(uiEventQueue, &evt, pdMS_TO_TICKS(15));
+                break;
+            }
+            break;
+        
+        case EVT_NEXT_MENU:
+        if (resolveLocationMenu.nextMenu == NULL)
+            return &saveTagMenu;
+        else
+            return resolveLocationMenu.nextMenu;
+        break;
+        }
+    }
+    else // No locations found
+    {
+        if (resolveLocationMenu.nextMenu == NULL)
+            return &saveTagMenu;
+        else
+            return resolveLocationMenu.nextMenu;
+    }
+
+    return NULL;
+}
+
+static void resolve_location_menu_exit()
+{
+    // ESP_LOGI("resolve_exit", "Stop draw task");
+    esp_timer_stop(display_delay_timer_handle);
+    sd.exit = true;
+    // if (scrollHandle != NULL)
+    //     vTaskDelete(scrollHandle);
+}
+
+static void resolve_location_menu_draw()
+{
+    const char* TAG = "resolve_draw";
+    const char* matchFoundStr = "Location match found!";
+    const char* matchPromptStr1 = "Save new location or";
+    const char* matchPromptStr2 = "overwrite old tag?";
+    const char* overwriteSuccStr1 = "Overwrite";
+    const char* overwriteSuccStr2 = "Successful!!!";
+
+    
+    u8g2_SetFont(&u8g2, u8g2_font_6x10_tr);
+    int charHeight = u8g2_GetMaxCharHeight(&u8g2) - 1;
+    // int charWidth = u8g2_GetMaxCharWidth(&u8g2);
+    switch (resolveLocationMenu.status)
+    {
+    case EVT_OVERWRITE_TAG:
+        u8g2_ClearBuffer(&u8g2);
+        u8g2_SetFont(&u8g2, u8g2_font_6x13B_tr);
+        u8g2_DrawUTF8(&u8g2, (u8g2_GetDisplayWidth(&u8g2) / 2) - (u8g2_GetStrWidth(&u8g2, (overwriteSuccStr1)) / 2),
+                         u8g2_GetDisplayHeight(&u8g2)/2 - u8g2_GetMaxCharHeight(&u8g2),
+                        overwriteSuccStr1);
+        u8g2_DrawUTF8(&u8g2, (u8g2_GetDisplayWidth(&u8g2) / 2) - (u8g2_GetStrWidth(&u8g2, (overwriteSuccStr2)) / 2),
+                         u8g2_GetDisplayHeight(&u8g2)/2,
+                        overwriteSuccStr2);
+
+        break;
+
+    case EVT_ON_ENTRY:
+        u8g2_ClearBuffer(&u8g2);
+        int posY = resolveLocationMenu.startPosY + 1;
+        u8g2_DrawUTF8(&u8g2, 0, posY, matchFoundStr);
+        u8g2_SetDrawColor(&u8g2, 2);
+        u8g2_DrawBox(&u8g2, 0, posY, u8g2_GetUTF8Width(&u8g2, matchFoundStr), charHeight);
+        u8g2_SetDrawColor(&u8g2, 1);
+        // u8g2_SetFont(&u8g2, u8g2_font_5x8_tr);
+        // charHeight = u8g2_GetMaxCharHeight(&u8g2);
+        posY += charHeight + 3;
+        u8g2_DrawHLine(&u8g2, 0, posY - 1, 128);
+        u8g2_DrawHLine(&u8g2, 0, posY + charHeight + 1, 128);
+        int posX = (u8g2_GetDisplayWidth(&u8g2) / 2) - (u8g2_GetStrWidth(&u8g2, (bestLocs[0].name)) / 2);
+        if (u8g2_GetUTF8Width(&u8g2, bestLocs[0].name) > u8g2_GetDisplayWidth(&u8g2))
+        {
+            sd.delayStartStopMs = 1000;
+            sd.delayScrollMs = 100;
+            sd.font = u8g2.font;
+            sd.string = bestLocs[0].name;
+            sd.strWidth = u8g2_GetUTF8Width(&u8g2, bestLocs[0].name);
+            sd.x = 0;
+            sd.y = posY;
+            sd.exit = false;
+
+            ESP_LOGI(TAG, "createTask string: %s; strWidth: %d", sd.string, sd.strWidth);
+            xTaskCreate(scroll_text_task, "scroll_task", 2048, &sd, 2, &scrollHandle);
+        }
+        else
+            u8g2_DrawUTF8(&u8g2, posX, posY, bestLocs[0].name);
+
+        posY += charHeight + 3;
+        u8g2_DrawUTF8(&u8g2, 0, posY, matchPromptStr1);
+        posY += charHeight - 1;
+        u8g2_DrawUTF8(&u8g2, 0, posY, matchPromptStr2);
+        [[fallthrough]];
+        // break;
+
+
+        default:
+            switch (resolveLocationMenu.selectedOption)
+            {
+            case SAVE_NEW_OPTION:
+                ESP_LOGI(TAG, "Draw SAVE_OPTION");
+                u8g2_DrawXBM(&u8g2, 0, u8g2_GetDisplayHeight(&u8g2) - 8, 128, 8, SAVE_cancel_img);
+                break;
+
+            case OVERWRITE_OPTION:
+                ESP_LOGI(TAG, "Draw CANCEL_OPTION");
+                u8g2_DrawXBM(&u8g2, 0, u8g2_GetDisplayHeight(&u8g2) - 8, 128, 8, SAVE_cancel_img);
+                u8g2_SetDrawColor(&u8g2, 2);
+                u8g2_DrawBox(&u8g2, 0, u8g2_GetDisplayHeight(&u8g2) - 8, 128, 8);
+                u8g2_SetDrawColor(&u8g2, 1);
+
+                break;
+
+            case NOT_SELECTED:
+            ESP_LOGI(TAG, "Draw NOT_SELECTED");
+                u8g2_DrawXBM(&u8g2, 0, u8g2_GetDisplayHeight(&u8g2) - 8, 128, 8, save_cancel_unchecked_img);
+                break;
+
+            default:
+                break;
+            }
+            break;
+        }
+}
+
+
 
 //===================================================================
 static void save_tag_menu_enter()
@@ -458,6 +660,7 @@ static void save_tag_menu_draw()
     const char* TAG = "savetag";
     const char* locPromptStr = "Enter Location Name:";
     u8g2_SetFont(&u8g2, u8g2_font_6x13_tr);
+
     int locPromptPosY = saveTagMenu.startPosY + 2;
     int textFieldPosY = locPromptPosY + u8g2_GetMaxCharHeight(&u8g2) + 3;
     int textFieldPosX = 5;    
@@ -470,9 +673,9 @@ static void save_tag_menu_draw()
     
     case EVT_ON_ENTRY:
         u8g2_ClearBuffer(&u8g2);
-        u8g2_DrawUTF8(&u8g2, 0,locPromptPosY, locPromptStr);
+        u8g2_DrawUTF8(&u8g2, 0, locPromptPosY, locPromptStr);
         // u8g2_DrawFrame(&u8g2, textFieldPosX-2, textFieldPosY, (u8g2_GetMaxCharWidth(&u8g2)+1) * displayCharWidth + 8, u8g2_GetMaxCharHeight(&u8g2) + 2);
-        u8g2_DrawXBM(&u8g2, 0, u8g2_GetDisplayHeight(&u8g2) - 8 ,128,8,save_cancel_unchecked_img);
+        u8g2_DrawXBM(&u8g2, 0, u8g2_GetDisplayHeight(&u8g2) - 8, 128, 8, save_cancel_unchecked_img);
         [[fallthrough]];
 
     case EVT_KEYPAD_PRESS:
@@ -523,51 +726,34 @@ static void transmit_menu_enter()
     transmitMenu.listBox->selectedRow = 0;
     transmitMenu.status = EVT_ON_ENTRY;    
 
-    for (int i = 0; i < ap_count; i++)
-    {
-        ESP_LOGI(TAG, "SSID %s", ap_records[i].ssid);
-        ESP_LOGI(TAG, "BSSID %02x:%02x:%02x:%02x:%02x:%02x", ap_records[i].bssid[0],
-                 ap_records[i].bssid[1],
-                 ap_records[i].bssid[2],
-                 ap_records[i].bssid[3],
-                 ap_records[i].bssid[4],
-                 ap_records[i].bssid[5]);
-        ESP_LOGI(TAG, "RSSI %d", ap_records[i].rssi);
-    }   
+    // for (int i = 0; i < ap_count; i++)
+    // {
+    //     ESP_LOGI(TAG, "SSID %s", ap_records[i].ssid);
+    //     ESP_LOGI(TAG, "BSSID %02x:%02x:%02x:%02x:%02x:%02x", ap_records[i].bssid[0],
+    //              ap_records[i].bssid[1],
+    //              ap_records[i].bssid[2],
+    //              ap_records[i].bssid[3],
+    //              ap_records[i].bssid[4],
+    //              ap_records[i].bssid[5]);
+    //     ESP_LOGI(TAG, "RSSI %d", ap_records[i].rssi);
+    // }   
     
-    uint8_t (*bssids)[6] = malloc(sizeof(*bssids) * ap_count);
-    int8_t* rssis = malloc(sizeof(int8_t) * ap_count);
-    if (!bssids || !rssis)
-    {
-        ESP_LOGE("transmit_enter","Malloc failed");
-        free(bssids);
-        free(rssis);
-        return;
-    }
-    for (int i = 0; i < ap_count; i++)
-    {
-        memcpy(bssids[i], ap_records[i].bssid, sizeof(ap_records[i].bssid));
-        rssis[i] = ap_records[i].rssi;
-    }
-    locNum = find_multiple_best_locations(bssids,rssis,ap_count,bestLocs);
-    transmitMenu.listBox->listSize = locNum + 1;
+    bestLocsNum = find_best_locations_from_scan(ap_records, ap_count, bestLocs, false);
+    transmitMenu.listBox->listSize = bestLocsNum + 1;
     
     locNameList[0] = "Auto";
-    for (int i = 0; i < locNum; i++)
+    for (int i = 0; i < bestLocsNum; i++)
     {
         ESP_LOGI(TAG, "Id: %ld\nName: %s\nTag: 0x%010llX", bestLocs[i].id, bestLocs[i].name, rfid_array_to_tag(bestLocs[i].tag));
         locNameList[i + 1] = bestLocs[i].name;
-    }
-
-    free(bssids);
-    free(rssis);
+    }   
 }
 
 static menu_t* transmit_menu_handle(int32_t event)
 {
     if (transmitMenu.status == EVT_ON_ENTRY) transmitMenu.status = 0;
     
-    if (locNum == 0) 
+    if (bestLocsNum == 0) 
     {
         transmitMenu.status = EVT_NO_MATCH;
         display_delay_cb_arg = KEY_BACK;
@@ -651,8 +837,8 @@ void ssd1306_display_wifi_aps(wifi_ap_record_t *ap_records, uint16_t ap_count, u
 static void display_list(menu_t* menu) 
 {        
     uint8_t listSize = menu->listBox->listSize;    
-    u8g2_SetFont(&u8g2, u8g2_font_amstrad_cpc_extended_8r);
-    int maxDisplayItems = (u8g2_GetDisplayHeight(&u8g2) - menu->startPosY) / (u8g2_GetMaxCharHeight(&u8g2)+2);
+    u8g2_SetFont(&u8g2, u8g2_font_7x13_tr);
+    int maxDisplayItems = (u8g2_GetDisplayHeight(&u8g2) - menu->startPosY) / (u8g2_GetMaxCharHeight(&u8g2)+1);
     if (menu->listBox->maxRows > maxDisplayItems) menu->listBox->maxRows = maxDisplayItems;
     
     ESP_LOGI("display list", "maxRows: %d", menu->listBox->maxRows);
@@ -662,7 +848,7 @@ static void display_list(menu_t* menu)
         int idx = i + menu->listBox->topRowIdx;
         // Ensure you don't read past the end of the list if there's a logic error elsewhere
         if (idx >= listSize) continue;       
-        u8g2_DrawButtonUTF8(&u8g2, 5, (i) * (u8g2_GetMaxCharHeight(&u8g2) + 2),
+        u8g2_DrawButtonUTF8(&u8g2, 5, (i) * (u8g2_GetMaxCharHeight(&u8g2) + 1) + menu->startPosY,
                             idx == menu->listBox->selectedRow ? U8G2_BTN_INV : U8G2_BTN_BW0,
                             u8g2_GetDisplayWidth(&u8g2) - 5 * 2, 5, 0, menu->listBox->list[idx]);        
     }
@@ -887,7 +1073,11 @@ void ui_handler_task(void* args)
             if (currentMenu->draw_func) 
             {
                 currentMenu->draw_func();
-                u8g2_SendBuffer(&u8g2);
+                if (xSemaphoreTake(drawMutex, portMAX_DELAY) == pdTRUE)
+                {
+                    u8g2_SendBuffer(&u8g2);
+                    xSemaphoreGive(drawMutex);
+                }
             }
 
             
@@ -903,7 +1093,7 @@ void display_delay_timer_callback(void* event)
 void tag_tx_cycle_callback()
 {
     int i = 0;
-    if (locNum <= 0) return;
+    if (bestLocsNum <= 0) return;
 
     for (;;)
     {
@@ -912,7 +1102,61 @@ void tag_tx_cycle_callback()
         // ESP_LOGI("tag_tx_cycle", "loc: %s\ttag: 0x%010llX", bestLocs[i].name, tag);
         vTaskDelay(1000 / portTICK_PERIOD_MS);
         i++;
-        if (i >= locNum)
+        if (i >= bestLocsNum)
             i = 0;
+    }
+}
+
+void scroll_text_task(void* arg)
+{
+    scroll_data_t *scrollPtr = arg;
+    int offset = 0;
+    const char* TAG = "scroll";
+    // const uint8_t *prevFont = u8g2.font;
+    // if (scrollPtr != NULL)
+        // u8g2_SetFont(&u8g2, scrollPtr->font);   
+    // int strLength = u8x8_GetUTF8Len(&u8g2.u8x8, scrollPtr->string);
+    int dispayWidth = u8g2_GetDisplayWidth(&u8g2);
+    int charHeight = u8g2_GetMaxCharHeight(&u8g2);
+    ESP_LOGI(TAG, "strWidth=%d dWidth=%d", scrollPtr->strWidth, dispayWidth);
+    vTaskDelay(pdMS_TO_TICKS(50));
+
+    for (;;)
+    {
+        // if (scrollPtr->font != NULL)
+        //     u8g2_SetFont(&u8g2, scrollPtr->font);
+        if (scrollPtr->exit)
+            vTaskDelete(NULL);
+
+        u8g2_SetDrawColor(&u8g2, 0);
+        u8g2_DrawBox(&u8g2, scrollPtr->x, scrollPtr->y, dispayWidth, charHeight);
+        u8g2_SetDrawColor(&u8g2, 1);
+        u8g2_DrawUTF8(&u8g2, scrollPtr->x - offset, scrollPtr->y, scrollPtr->string);
+
+        // u8g2_SetFont(&u8g2, prevFont);
+        if (xSemaphoreTake(drawMutex, portMAX_DELAY) == pdTRUE)
+        {
+            u8g2_UpdateDisplayArea(&u8g2, scrollPtr->x / 8, scrollPtr->y / 8, dispayWidth / 8, charHeight / 8 + 2);
+            xSemaphoreGive(drawMutex);
+        }    
+
+        if (offset == 0)
+        {
+            // ESP_LOGI(TAG, "offset == 0 delay %d", scrollPtr->delayStartStopMs); 
+            vTaskDelay(pdMS_TO_TICKS(scrollPtr->delayStartStopMs));
+        }
+           
+        if (scrollPtr->strWidth - offset < dispayWidth)
+        {
+            offset = 0;
+            // ESP_LOGI(TAG, "sWidth - o < dWidth delay %d", scrollPtr->delayStartStopMs);
+            vTaskDelay(pdMS_TO_TICKS(scrollPtr->delayStartStopMs));            
+        }
+        else
+        {
+            offset += 2;
+            // ESP_LOGI(TAG, "offset += 2 delay %d",scrollPtr->delayScrollMs);
+            vTaskDelay(pdMS_TO_TICKS(scrollPtr->delayScrollMs));
+        }
     }
 }
