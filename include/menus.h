@@ -1,6 +1,5 @@
 #ifndef MENUS_H
 #define MENUS_H
-// #include "ssd1306.h"
 #include "esp_timer.h"
 #include "driver/rmt_tx.h"
 #include "esp_wifi.h"
@@ -70,7 +69,7 @@ typedef struct
 
 typedef struct
 {
-    uint8_t textFieldPage;
+    // uint8_t textFieldPage;
     char* textFieldBuffer;
     uint8_t textFieldBufferSize;
 } menu_textbox_t;
@@ -155,8 +154,56 @@ void confirmation_timer_callback(void *arg);
 void ui_handler_task(void* args);
 void display_delay_timer_callback();
 void tag_tx_cycle_callback();
+void display_list(menu_t *menu);
+void scroll_text_task(void* arg);
+menu_t* go_to_main_menu();
+void list_event_handle(menu_t *menu, int32_t event);
 
-#define u8g2_PosCenterX(u8g2, str) ((u8g2_GetDisplayWidth(&(u8g2)) / 2) - (u8g2_GetStrWidth(&(u8g2), (str)) / 2))
+void stack_push(menu_t* state);
+menu_t* stack_pop();
+
+//=======================================================================================
+menu_t *main_menu_handle(int32_t event);
+void main_menu_draw();
+void main_menu_exit();
+
+void scan_tag_menu_enter();
+menu_t *scan_tag_menu_handle(int32_t event);
+void scan_tag_menu_exit();
+void scan_tag_menu_draw();
+
+void scan_wifi_menu_enter();
+menu_t *scan_wifi_menu_handle(int32_t event);
+void scan_wifi_menu_exit();
+void scan_wifi_menu_draw();
+
+void save_tag_menu_enter();
+menu_t *save_tag_menu_handle(int32_t event);
+void save_tag_menu_draw();
+
+void transmit_menu_enter();
+menu_t *transmit_menu_handle(int32_t event);
+void transmit_menu_exit();
+void transmit_menu_draw();
+
+void resolve_location_menu_enter();
+menu_t* resolve_location_menu_handle(int32_t event);
+void resolve_location_menu_exit();
+void resolve_location_menu_draw();
+
+void search_loc_menu_enter(); 
+menu_t *search_loc_menu_handle(int32_t event);
+void search_loc_menu_draw();
+
+//=======================================================================================
+extern menu_t mainMenu;
+extern menu_t scanTagMenu;
+extern menu_t saveTagMenu;
+extern menu_t scanWifiMenu;
+extern menu_t resolveLocationMenu;
+extern menu_t saveTagMenu;
+extern menu_t transmitMenu;
+extern menu_t searchLocMenu;
 
 
 #endif

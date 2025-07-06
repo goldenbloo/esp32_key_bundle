@@ -42,6 +42,7 @@
         "mui.h": "c",
         "sstream": "c",
         "bitmaps.h": "c",
-        "cstdlib": "c"
+        "cstdlib": "c",
+        "nvs_flash.h": "c"
     }
 }

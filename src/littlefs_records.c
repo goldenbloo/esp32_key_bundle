@@ -303,3 +303,32 @@ int32_t get_next_location_id(void)
     fclose(f);
     return last.id + 1;
 }
+
+int find_locations_by_name(const char *substr, location_t results[], int max_results)
+{
+    if (substr == NULL || *substr == '\0' || max_results <= 0) {
+        return 0;
+    }
+
+    FILE *f = fopen("/littlefs/locations.bin", "rb");
+    if (!f) {
+        ESP_LOGE(TAG, "Failed to open locations file");
+        return 0;
+    }
+
+    int idx = 0;
+    location_t loc;
+
+    while (idx < max_results
+           && fread(&loc, sizeof(location_t), 1, f) == 1)
+    {
+        
+        if (strcasestr(loc.name, substr) != NULL)
+        {
+            results[idx++] = loc;
+        }
+    }
+
+    fclose(f);
+    return idx;
+}
