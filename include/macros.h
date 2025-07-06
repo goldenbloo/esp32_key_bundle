@@ -15,23 +15,9 @@
 #define READ_MODE         0
 #define TRANSMIT_MODE     1
 
-#define ACTION_LEFT         'L'
-#define ACTION_RIGHT        'R'
-#define ACTION_UP           'U'
-#define ACTION_DOWN         'D'
-#define ACTION_ENTER        'E'
-#define ACTION_0            '0'
-#define ACTION_1            '7'
-#define ACTION_2            '8'
-#define ACTION_3            '9'
-#define ACTION_4            '4'
-#define ACTION_5            '5'
-#define ACTION_6            '6'
-#define ACTION_7            '1'
-#define ACTION_8            '2'
-#define ACTION_9            '3'
-
 #define FIELD_SIZE          30
 #define MENU_STACK_SIZE     10
 #define BSSID_MAX           5
+#define LOC_NUM_MAX         5
+#define LOC_SEARCH_MAX      5
 #define LOC_MATCH_MAX       3
