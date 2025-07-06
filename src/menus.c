@@ -7,7 +7,6 @@
 #include "esp_log.h"
 #include "rfid.h"
 #include "menus.h"
-// #include "ssd1306.h"
 #include "bitmaps.h"
 #include "littlefs_records.h"
 #include <u8g2.h>

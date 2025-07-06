@@ -7,7 +7,7 @@
 #include "esp_log.h"
 #include "rfid.h"
 #include "menus.h"
-#include "ssd1306.h"
+
 #include "littlefs_records.h"
 #include "globals_menus.h"
 

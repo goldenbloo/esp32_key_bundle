@@ -73,5 +73,5 @@ void main_menu_draw()
 
 void main_menu_exit()
 {
-    // ssd1306_clear_screen(devPtr, false);
+    
 }
