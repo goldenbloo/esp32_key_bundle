@@ -1,0 +1,6 @@
+[submodule "lib/u8g2-hal-esp-idf"]
+	path = lib/u8g2-hal-esp-idf
+	url = https://github.com/goldenbloo/u8g2-hal-esp-idf
+[submodule "lib/u8g2"]
+	path = lib/u8g2
+	url = https://github.com/olikraus/u8g2

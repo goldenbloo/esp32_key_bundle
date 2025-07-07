@@ -69,15 +69,7 @@ void rfid_deferred_task(void *arg)
                     long_tag |= ((uint64_t)evt.tag[i] << (8 * i));
                 currentTag = long_tag;
                 memcpy(currentTagArray, evt.tag, sizeof(currentTagArray));
-                // if (last_tag != long_tag)
-                // {
-                //     last_tag = long_tag;
-                //     sprintf(str, "0x%010" PRIX64, long_tag);
-                //     // ssd1306_display_text(&dev, 0, str, 12, 0);
-                //     ESP_LOGI(TAG, "tag: %#llx, idx: %ld", long_tag, evt.idx);
-                //     ESP_LOGI(TAG, "str: %s", int_to_char_bin(str,evt.buf));
-                // }                
-                // xSemaphoreGive(rfidDoneSem);
+
                 int32_t event = EVT_RFID_SCAN_DONE;
                 xQueueSendToBack(uiEventQueue, &event, pdMS_TO_TICKS(15));
                 rfid_disable_rx_tx_tag();

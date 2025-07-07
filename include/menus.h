@@ -147,7 +147,7 @@ extern u8g2_t u8g2;
 
 
 void list_test();
-void ssd1306_display_wifi_aps(wifi_ap_record_t *ap_records, uint16_t ap_count, uint32_t startPage);
+void display_wifi_aps(wifi_ap_record_t *ap_records, uint16_t ap_count, uint32_t startPage);
 // void display_loc_save(QueueHandle_t keyEventQueue);
 void keypad_button_press(int8_t pressedButton);
 void confirmation_timer_callback(void *arg);

@@ -40,7 +40,7 @@ menu_t* go_to_main_menu()
 }
 
 //===================================================================
-void ssd1306_display_wifi_aps(wifi_ap_record_t *ap_records, uint16_t ap_count, uint32_t startPosY)
+void display_wifi_aps(wifi_ap_record_t *ap_records, uint16_t ap_count, uint32_t startPosY)
 {
     const int maxPages = (u8g2_GetDisplayHeight(&u8g2) - startPosY) / (u8g2_GetMaxCharHeight(&u8g2)+2);
     u8g2_SetFont(&u8g2, u8g2_font_NokiaSmallBold_tr);
