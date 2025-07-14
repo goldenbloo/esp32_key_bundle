@@ -5,7 +5,7 @@
 #include "esp_wifi.h"
 #include "bitmaps.h"
 #include "u8g2.h"
-#define MAX_SIZE 5
+#define MAX_SIZE 10
 
 typedef enum
 {
@@ -16,6 +16,9 @@ typedef enum
     REWRITE_MATCH_LOC_PROMPT, 
     SAVE_TAG_MENU,
     TRANSMIT_TAG_MENU,
+    SEARCH_LOC_MENU,
+    FOUND_LOC_LIST_MENU,
+    LOC_EDIT_OPTIONS_MENU,
     
 
 } menu_e;
@@ -42,6 +45,8 @@ typedef enum
     EVT_KEYPAD_PRESS,
     EVT_ON_ENTRY,
     EVT_NO_MATCH,
+    EVT_SEARCH_NOT_FOUND,
+    EVT_SEARCH_FOUND,
     EVT_APS_NOT_FOUND,
     EVT_OVERWRITE_TAG,
 
@@ -117,13 +122,12 @@ typedef struct
 
 typedef struct 
 {
-    uint8_t x, y;
-    const uint8_t *font;
+    uint8_t textX, textY, bgBoxX, bgBoxY;
+    bool invert;
     char* string;
     uint16_t strWidth;
     uint16_t delayScrollMs;
-    uint16_t delayStartStopMs;
-    bool exit;
+    uint16_t delayStartStopMs;    
 
 }scroll_data_t;
 
@@ -134,7 +138,7 @@ extern esp_timer_handle_t confirmation_timer_handle, display_delay_timer_handle;
 extern ui_event_e display_delay_cb_arg;
 extern QueueHandle_t uiEventQueue, modeSwitchQueue;
 // extern SSD1306_t* devPtr;
-extern SemaphoreHandle_t scanSem, scanDoneSem, rfidDoneSem, drawMutex;
+extern SemaphoreHandle_t scanSem, scanDoneSem, rfidDoneSem, scrollDeleteSem, drawMutex;
 extern uint64_t currentTag;
 extern uint8_t currentTagArray[5];
 extern rmt_channel_handle_t tx_chan;
@@ -158,6 +162,8 @@ void display_list(menu_t *menu);
 void scroll_text_task(void* arg);
 menu_t* go_to_main_menu();
 void list_event_handle(menu_t *menu, int32_t event);
+void text_field_draw(uint32_t textFieldPosX, uint32_t textFieldPosY);
+void scroll_task_stop();
 
 void stack_push(menu_t* state);
 menu_t* stack_pop();
@@ -195,6 +201,14 @@ void search_loc_menu_enter();
 menu_t *search_loc_menu_handle(int32_t event);
 void search_loc_menu_draw();
 
+void found_loc_list_menu_enter();
+menu_t *found_loc_list_menu_handle(int32_t event);
+void found_loc_list_menu_draw();
+
+void loc_options_menu_enter();
+menu_t *loc_options_menu_handle(int32_t event);
+void loc_options_menu_draw();
+
 //=======================================================================================
 extern menu_t mainMenu;
 extern menu_t scanTagMenu;
@@ -204,6 +218,8 @@ extern menu_t resolveLocationMenu;
 extern menu_t saveTagMenu;
 extern menu_t transmitMenu;
 extern menu_t searchLocMenu;
+extern menu_t foundLocListMenu;
+extern menu_t locOptionsMenu;
 
 
 #endif

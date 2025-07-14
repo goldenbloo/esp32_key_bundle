@@ -10,7 +10,7 @@
 #include "littlefs_records.h"
 
 
-char *mainMenuEntries[] = {"Read tag", "Transmit tag", "Dump records", "Search location", "Delete all tags"};
+char *mainMenuEntries[] = {"Read tag", "Transmit tag", "Dump records", "Search location", "Delete all tags i mean ALL TAGS","dummy"};
 menu_listbox_t mainMenuListBox = {
     .list = mainMenuEntries,
     .listSize = sizeof(mainMenuEntries) / sizeof(char *),
@@ -52,7 +52,8 @@ menu_t *main_menu_handle(int32_t event)
             break;
 
         case 3: // Search location
-
+            searchLocMenu.nextMenu = &foundLocListMenu;
+            return &searchLocMenu;
             break;
 
         case 4: // Delete all locations choice

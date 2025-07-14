@@ -52,6 +52,7 @@ void transmit_menu_enter()
     
     bestLocsNum = find_best_locations_from_scan(ap_records, ap_count, bestLocs, false);
     transmitMenu.listBox->listSize = bestLocsNum + 1;
+    transmitMenu.listBox->list = locNameList;
     
     locNameList[0] = "Auto";
     for (int i = 0; i < bestLocsNum; i++)
@@ -78,7 +79,7 @@ menu_t* transmit_menu_handle(int32_t event)
             vTaskResume(rfidAutoTxHandler);        
         else
         {
-            int idx = transmitMenu.listBox->selectedRow - 1;
+            int8_t idx = transmitMenu.listBox->selectedRow - 1;
             if (idx > sizeof(bestLocs)) ESP_LOGE("transmit_menu_handle", "idx > sizeof(bestLocs)");
             uint64_t rawTag = rfid_arr_tag_to_raw_tag(bestLocs[idx].tag);
             rfid_enable_tx_raw_tag(rawTag);

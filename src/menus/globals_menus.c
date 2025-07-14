@@ -10,7 +10,7 @@
 #include "littlefs_records.h"
 
 
-TaskHandle_t scrollHandle;
+TaskHandle_t scrollTaskHandle;
 scroll_data_t sd;
 
 wifi_ap_record_t ap_records[BSSID_MAX];
@@ -18,7 +18,8 @@ uint16_t ap_count = 0;
 
 location_t bestLocs[LOC_NUM_MAX];
 uint32_t bestLocsNum;
-char *locNameList[LOC_MATCH_MAX + 1];
+char *locNameList[LOC_NUM_MAX + 1];
+location_t chosenLoc;
 
 menu_t* menuStack[MENU_STACK_SIZE];
 int stack_top = -1;

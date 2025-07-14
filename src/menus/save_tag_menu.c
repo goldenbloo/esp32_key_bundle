@@ -69,12 +69,12 @@ menu_t* save_tag_menu_handle(int32_t event)
             if (currentLocId >= 0)
             {
                 location_t loc = {.id = currentLocId};
-                for (int i = 0; i < ap_count && i < BSSID_MAX; i++)
+                for (uint8_t i = 0; i < ap_count && i < BSSID_MAX; i++)
                 {
                     memcpy(loc.bssids[i], ap_records[i].bssid, sizeof(loc.bssids[i]));
                     loc.rssis[i] = ap_records[i].rssi;
                 }
-                for (int i = ap_count; i < BSSID_MAX; i++)
+                for (uint8_t i = ap_count; i < BSSID_MAX; i++)
                 {
                     memset(loc.bssids[i], 0, sizeof(loc.bssids[i]));
                     loc.rssis[i] = 0;
@@ -117,11 +117,9 @@ void save_tag_menu_draw()
     const char* locPromptStr = "Enter Location Name:";
     u8g2_SetFont(&u8g2, u8g2_font_6x13_tr);
 
-    int locPromptPosY = saveTagMenu.startPosY + 2;
-    int textFieldPosY = locPromptPosY + u8g2_GetMaxCharHeight(&u8g2) + 3;
-    int textFieldPosX = 5;    
-    int displayCharWidth = (u8g2_GetDisplayWidth(&u8g2) - textFieldPosX) / (u8g2_GetMaxCharWidth(&u8g2) + 1) - 2;
-    const char* startPtr = keypad.bufferPos < displayCharWidth ? keypad.textBuffer : keypad.textBuffer + (keypad.bufferPos - displayCharWidth + 1);
+    uint16_t locPromptPosY = saveTagMenu.startPosY + 2;
+    uint16_t textFieldPosY = locPromptPosY + u8g2_GetMaxCharHeight(&u8g2) + 3;
+    uint16_t textFieldPosX = 5;       
     // ESP_LOGI(TAG,"")
     // u8g2_SetFontPosTop(&u8g2);
     switch (saveTagMenu.status)
@@ -136,16 +134,11 @@ void save_tag_menu_draw()
 
     case EVT_KEYPAD_PRESS:
         // ESP_LOGI("savetag", "displayCharWidth: %d", displayCharWidth);
-        u8g2_SetDrawColor(&u8g2, 0); // 0 = background
-        u8g2_DrawBox(&u8g2, 0, textFieldPosY, u8g2_GetDisplayWidth(&u8g2), u8g2_GetMaxCharHeight(&u8g2));
-        u8g2_SetDrawColor(&u8g2, 1); // Reset to foreground for next text
-        u8g2_DrawFrame(&u8g2, textFieldPosX - 2, textFieldPosY, (u8g2_GetMaxCharWidth(&u8g2) + 1) * displayCharWidth + 8, u8g2_GetMaxCharHeight(&u8g2) + 2);
-        u8g2_DrawUTF8(&u8g2, textFieldPosX, textFieldPosY, startPtr);
+        text_field_draw(textFieldPosX, textFieldPosY);
         break;
 
-    default:        
-        // int paddingH = 0;
-        // int paddingV = 1;        
+    default:       
+    
         switch (saveTagMenu.selectedOption)
         {
         case SAVE_OPTION:

@@ -43,6 +43,8 @@
         "sstream": "c",
         "bitmaps.h": "c",
         "cstdlib": "c",
-        "nvs_flash.h": "c"
+        "nvs_flash.h": "c",
+        "esp_wifi.h": "c",
+        "esp_log.h": "c"
     }
 }

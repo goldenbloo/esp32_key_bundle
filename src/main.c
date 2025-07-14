@@ -42,7 +42,7 @@ rmt_transmit_config_t trans_config  = {
         .flags.queue_nonblocking = true,
     };
 rmt_symbol_word_t pulse_pattern[RMT_SIZE];
-SemaphoreHandle_t scanSem, scanDoneSem, rfidDoneSem, drawMutex;
+SemaphoreHandle_t scanSem, scanDoneSem, rfidDoneSem, scrollDeleteSem, drawMutex;
 
 u8g2_t u8g2;
 
@@ -361,11 +361,13 @@ void app_main(void)
     scanSem = xSemaphoreCreateBinary();
     scanDoneSem = xSemaphoreCreateBinary();
     rfidDoneSem = xSemaphoreCreateBinary();
+    scrollDeleteSem = xSemaphoreCreateBinary();
     drawMutex = xSemaphoreCreateMutex();    
     // configASSERT(modeSwitchSem != NULL);
     configASSERT(scanSem != NULL);
     configASSERT(scanDoneSem != NULL);
     configASSERT(rfidDoneSem != NULL);
+    configASSERT(scrollDeleteSem != NULL);
     configASSERT(drawMutex != NULL);
 
 
