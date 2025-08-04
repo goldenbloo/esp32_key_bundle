@@ -19,6 +19,11 @@ typedef enum
     SEARCH_LOC_MENU,
     FOUND_LOC_LIST_MENU,
     LOC_EDIT_OPTIONS_MENU,
+    LOC_NAME_EDIT_MENU,
+    LOC_WIFI_APS_UPDATE_MENU,
+    LOC_TAG_UPDATE_MENU,
+    LOC_DELETE_MENU,
+    LOC_TRANSMIT_TAG,
     
 
 } menu_e;
@@ -49,6 +54,11 @@ typedef enum
     EVT_SEARCH_FOUND,
     EVT_APS_NOT_FOUND,
     EVT_OVERWRITE_TAG,
+    EVT_SAVE_SUCCESS,
+    EVT_SAVE_FAIL,
+    EVT_DELETE_SUCCESS,
+    EVT_DELETE_FAIL,
+
 
 } ui_event_e;
 
@@ -61,6 +71,8 @@ typedef enum
     OVERWRITE_OPTION,
     SAVE_NEW_OPTION,
     CANCEL_OPTION,
+    DELETE_OPTION,
+    
 } option_e;
 
 typedef struct
@@ -161,6 +173,7 @@ void tag_tx_cycle_callback();
 void display_list(menu_t *menu);
 void scroll_text_task(void* arg);
 menu_t* go_to_main_menu();
+menu_t *go_to_loc_options_menu();
 void list_event_handle(menu_t *menu, int32_t event);
 void text_field_draw(uint32_t textFieldPosX, uint32_t textFieldPosY);
 void scroll_task_stop();
@@ -199,6 +212,7 @@ void resolve_location_menu_draw();
 
 void search_loc_menu_enter(); 
 menu_t *search_loc_menu_handle(int32_t event);
+void search_loc_menu_exit();
 void search_loc_menu_draw();
 
 void found_loc_list_menu_enter();
@@ -208,6 +222,27 @@ void found_loc_list_menu_draw();
 void loc_options_menu_enter();
 menu_t *loc_options_menu_handle(int32_t event);
 void loc_options_menu_draw();
+
+void change_loc_name_menu_enter();
+menu_t *change_loc_name_menu_handle(int32_t event);
+void change_loc_name_menu_draw();
+
+void update_wifi_menu_enter();
+menu_t *update_wifi_menu_handle(int32_t event);
+void update_wifi_menu_draw();
+
+void update_tag_menu_enter();
+menu_t* update_tag_menu_handle(int32_t event);
+void update_tag_menu_draw();
+
+void delete_loc_menu_enter();
+menu_t* delete_loc_menu_handle(int32_t event);
+void delete_loc_menu_draw();
+
+void transmit_loc_tag_menu_enter();
+menu_t* transmit_loc_tag_menu_handle(int32_t event);
+void transmit_loc_tag_menu_exit();
+void transmit_loc_tag_menu_draw();
 
 //=======================================================================================
 extern menu_t mainMenu;
@@ -220,6 +255,12 @@ extern menu_t transmitMenu;
 extern menu_t searchLocMenu;
 extern menu_t foundLocListMenu;
 extern menu_t locOptionsMenu;
+extern menu_t changeLocNameMenu;
+extern menu_t updateWifiMenu;
+extern menu_t updateTagMenu;
+extern menu_t deleteLocMenu;
+extern menu_t transmitLocTagMenu;
+
 
 
 #endif

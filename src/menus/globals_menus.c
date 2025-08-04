@@ -19,12 +19,13 @@ uint16_t ap_count = 0;
 location_t bestLocs[LOC_NUM_MAX];
 uint32_t bestLocsNum;
 char *locNameList[LOC_NUM_MAX + 1];
-location_t chosenLoc;
+location_t currentLoc;
 
 menu_t* menuStack[MENU_STACK_SIZE];
 int stack_top = -1;
 
 char fieldBuffer[FIELD_SIZE];
+char searchMenuBuffer[FIELD_SIZE];
 keypad_t keypad = {
 .textBuffer = fieldBuffer,
 .bufferSize = sizeof(fieldBuffer),

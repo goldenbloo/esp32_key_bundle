@@ -59,38 +59,49 @@ void transmit_menu_enter()
     {
         ESP_LOGI(TAG, "Id: %ld\nName: %s\nTag: 0x%010llX", bestLocs[i].id, bestLocs[i].name, rfid_array_to_tag(bestLocs[i].tag));
         locNameList[i + 1] = bestLocs[i].name;
-    }   
+    }
+
+    if (rfidAutoTxHandler == NULL)
+        xTaskCreate(tag_tx_cycle_callback, "tag_tx_cycle_callback", 2048, NULL, 0, &rfidAutoTxHandler);
 }
 
 menu_t* transmit_menu_handle(int32_t event)
 {
     if (transmitMenu.status == EVT_ON_ENTRY) transmitMenu.status = 0;
-    
-    if (bestLocsNum == 0) 
+
+    if (bestLocsNum == 0)
     {
         transmitMenu.status = EVT_NO_MATCH;
         display_delay_cb_arg = KEY_BACK;
         esp_timer_start_once(display_delay_timer_handle, 2000 * 1000ULL);
     }
     else
-    {   
-        list_event_handle(&transmitMenu, event);        
+    {
+        list_event_handle(&transmitMenu, event);
         if (transmitMenu.listBox->selectedRow == 0)        
-            vTaskResume(rfidAutoTxHandler);        
+            vTaskResume(rfidAutoTxHandler);
+        
         else
         {
+            vTaskSuspend(rfidAutoTxHandler);
             int8_t idx = transmitMenu.listBox->selectedRow - 1;
-            if (idx > sizeof(bestLocs)) ESP_LOGE("transmit_menu_handle", "idx > sizeof(bestLocs)");
+            if (idx > sizeof(bestLocs))
+                ESP_LOGE("transmit_menu_handle", "idx > sizeof(bestLocs)");
             uint64_t rawTag = rfid_arr_tag_to_raw_tag(bestLocs[idx].tag);
             rfid_enable_tx_raw_tag(rawTag);
         }
-    }    
-    return NULL;    
+    }
+    return NULL;
 }
 
 void transmit_menu_exit()
 {
-    vTaskSuspend(rfidAutoTxHandler);
+    // vTaskSuspend(rfidAutoTxHandler);
+    if (rfidAutoTxHandler != NULL)
+    {
+        vTaskDelete(rfidAutoTxHandler);
+        rfidAutoTxHandler = NULL;
+    }
     rfid_disable_rx_tx_tag();
     esp_timer_stop(display_delay_timer_handle);
 }

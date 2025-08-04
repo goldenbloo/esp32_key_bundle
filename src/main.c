@@ -420,7 +420,7 @@ void app_main(void)
     }
     xTaskCreate(ui_handler_task, "ui_handler_task", 4096, NULL, 3, &uiHandlerTask);
 
-    xTaskCreate(tag_tx_cycle_callback, "tag_tx_cycle_callback", 2048, NULL, 0, &rfidAutoTxHandler);
-    vTaskSuspend(rfidAutoTxHandler);    
+    // xTaskCreate(tag_tx_cycle_callback, "tag_tx_cycle_callback", 2048, NULL, 0, &rfidAutoTxHandler);
+    // vTaskSuspend(rfidAutoTxHandler);    
     
 }

@@ -36,8 +36,9 @@ menu_t *main_menu_handle(int32_t event)
     {
         switch (mainMenu.listBox->selectedRow)
         {
-        case 0: // Receive tag choice
+        case 0: // Read tag choice
             ESP_LOGI(TAG, "enter to receive");
+            scanTagMenu.nextMenu = NULL;
             return &scanTagMenu;
             break;
 

@@ -22,7 +22,8 @@ bool append_location(const location_t *loc);
 int32_t get_next_location_id(void);
 bool read_all_locations(void);
 void clear_all_locations();
-bool overwrite_location(const location_t *loc);
-int find_locations_by_name(const char *substr, location_t results[], int max_results);
+bool write_location(const location_t *loc);
+int32_t find_locations_by_name(const char *substr, location_t results[], int max_results);
+bool delete_location(int32_t id_to_delete);
 
 #endif

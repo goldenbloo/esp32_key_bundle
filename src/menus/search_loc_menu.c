@@ -12,7 +12,7 @@
 #include "globals_menus.h"
 
 menu_textbox_t searchLocMenuTextBox = {
-    .textFieldBuffer = fieldBuffer,
+    .textFieldBuffer = searchMenuBuffer,
     .textFieldBufferSize = FIELD_SIZE,    
 };
 
@@ -23,21 +23,19 @@ menu_t searchLocMenu = {
     .draw_func = search_loc_menu_draw,
     .event_handler_func = search_loc_menu_handle,
     .enter_func = search_loc_menu_enter,
+    .exit_func = search_loc_menu_exit,
     .back_handler_func = go_to_main_menu,   
 };
 
 void search_loc_menu_enter()
 {
-     if (searchLocMenu.textBox == NULL){
-        ESP_LOGE("wifi_enter", "Textbox in searchLocMenu in NULL"); 
-        return;
-    }
-    memset(searchLocMenu.textBox->textFieldBuffer, 0, searchLocMenu.textBox->textFieldBufferSize); 
-    keypad.bufferPos = -1;   
+    keypad.textBuffer = searchMenuBuffer;
+    // memset(searchLocMenu.textBox->textFieldBuffer, 0, searchLocMenu.textBox->textFieldBufferSize);
+    keypad.bufferPos = strlen(keypad.textBuffer) - 1;
     keypad.lastPressedButton = -1;
     keypad.displayCharWidth = 16;
     searchLocMenu.status = EVT_ON_ENTRY;
-    searchLocMenu.selectedOption = NO_OPTION;
+    searchLocMenu.selectedOption = NOT_SELECTED;
 }
 
 menu_t *search_loc_menu_handle(int32_t event)
@@ -92,17 +90,22 @@ menu_t *search_loc_menu_handle(int32_t event)
     return NULL;
 }
 
+void search_loc_menu_exit()
+{
+    keypad.textBuffer = fieldBuffer;
+}
+
 void search_loc_menu_draw()
 {
     // const char* TAG = "searchLoc";
-    const char* locPromptStr = "Enter Location Name:";
-    const char* notFoundStr = "Location not Found";
+    const char *locPromptStr = "Enter Location Name:";
+    const char *notFoundStr = "Location not Found";
     u8g2_SetFont(&u8g2, u8g2_font_6x13_tr);
 
     uint16_t locPromptPosY = searchLocMenu.startPosY + 2;
     uint16_t textFieldPosY = locPromptPosY + u8g2_GetMaxCharHeight(&u8g2) + 3;
     uint16_t textFieldPosX = 5;
-    
+
     // ESP_LOGI(TAG,"")
     // u8g2_SetFontPosTop(&u8g2);
     switch (searchLocMenu.status)
@@ -122,7 +125,7 @@ void search_loc_menu_draw()
 
     case EVT_SEARCH_NOT_FOUND:
         u8g2_ClearBuffer(&u8g2);
-        u8g2_DrawUTF8(&u8g2, u8g2_GetDisplayWidth(&u8g2)/2 - u8g2_GetUTF8Width(&u8g2, notFoundStr)/2, u8g2_GetDisplayHeight(&u8g2) / 2, notFoundStr);
+        u8g2_DrawUTF8(&u8g2, u8g2_GetDisplayWidth(&u8g2) / 2 - u8g2_GetUTF8Width(&u8g2, notFoundStr) / 2, u8g2_GetDisplayHeight(&u8g2) / 2, notFoundStr);
 
         break;
     }

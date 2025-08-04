@@ -38,6 +38,18 @@ menu_t* go_to_main_menu()
             return returnMenu;
     }
 }
+menu_t *go_to_loc_options_menu()
+{
+    menu_t *returnMenu = NULL;
+    while (1)
+    {
+        returnMenu = stack_pop();
+        if (returnMenu == NULL)
+            return NULL;
+        if (returnMenu->menuId == LOC_EDIT_OPTIONS_MENU)
+            return returnMenu;
+    }
+}
 
 //===================================================================
 void display_wifi_aps(wifi_ap_record_t *ap_records, uint16_t ap_count, uint32_t startPosY)
@@ -270,26 +282,23 @@ void ui_handler_task(void* args)
             if (event == KEY_BACK)
             {
                 menu_t *previousMenu = NULL;
-                if (currentMenu->back_handler_func != NULL)                
-                    previousMenu = currentMenu->back_handler_func();                
-                else                
+                if (currentMenu->back_handler_func != NULL)
+                    previousMenu = currentMenu->back_handler_func();
+                else
                     previousMenu = stack_pop();
-                
-               if (previousMenu != NULL) {                   
-                   if (currentMenu->exit_func)                   
-                       currentMenu->exit_func(); 
 
-                   currentMenu = previousMenu;                  
+                if (previousMenu != NULL)
+                {
+                    if (currentMenu->exit_func)
+                        currentMenu->exit_func();
+                    scroll_task_stop();
+                    currentMenu = previousMenu;
 
-                   if (currentMenu->enter_func)                   
-                       currentMenu->enter_func();                   
-               }
-               else
-               {
-                   // Optional: Add logging or error handling if no previous menu is found
-                   // For example, if stack_pop() returns NULL and there's no back_handler_func
-                   // printf("Warning: No previous menu to navigate to.\n");
-               }
+                    if (currentMenu->enter_func)
+                        currentMenu->enter_func();
+                }
+                else
+                    ESP_LOGE("ui_handler","Warning: No previous menu to navigate to");
             }
             else
             {   // Let the current state handle the event
@@ -308,6 +317,7 @@ void ui_handler_task(void* args)
                             currentMenu->exit_func();
 
                         // Officially change state
+                        scroll_task_stop();
                         currentMenu = nextMenu;
 
                         // Perform entry action of new state
@@ -399,7 +409,7 @@ void scroll_text_task(void* arg)
     uint16_t charHeight = u8g2_GetMaxCharHeight(&u8g2);
     ESP_LOGI(TAG, "strWidth=%d dWidth=%d", pData->strWidth, dispayWidth);
     ESP_LOGI(TAG, "pData->textY: %d", pData->textY);
-    vTaskDelay(pdMS_TO_TICKS(1));
+    vTaskDelay(pdMS_TO_TICKS(50));
 
     for (;;)
     {

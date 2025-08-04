@@ -59,7 +59,7 @@ menu_t* resolve_location_menu_handle(int32_t event)
             {
             case OVERWRITE_OPTION:
                 memcpy(bestLocs[0].tag, currentTagArray, sizeof(currentTagArray));
-                overwrite_location(&bestLocs[0]);
+                write_location(&bestLocs[0]);
                 scroll_task_stop();
                 resolveLocationMenu.status = EVT_OVERWRITE_TAG;                
                 display_delay_cb_arg = KEY_BACK;
@@ -151,7 +151,8 @@ void resolve_location_menu_draw()
             pTaskData->textX = 0;
             pTaskData->textY = posY;    
             pTaskData->bgBoxX = 0;
-            pTaskData->bgBoxY = posY;       
+            pTaskData->bgBoxY = posY;    
+            pTaskData->invert = false;
 
             // ESP_LOGI(TAG, "createTask string: %s; strWidth: %d", sd.string, sd.strWidth);
             xTaskCreate(scroll_text_task, "scroll_task", 2048, pTaskData, 2, &scrollTaskHandle);

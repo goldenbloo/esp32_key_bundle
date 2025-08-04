@@ -24,7 +24,7 @@ menu_t foundLocListMenu = {
     .draw_func = found_loc_list_menu_draw,
     .event_handler_func = found_loc_list_menu_handle,
     .enter_func = found_loc_list_menu_enter,
-    .back_handler_func = go_to_main_menu,   
+    // .back_handler_func = go_to_main_menu,   
 };
 
 void found_loc_list_menu_enter()
@@ -50,7 +50,7 @@ menu_t *found_loc_list_menu_handle(int32_t event)
      
      if (event == KEY_ENTER)
      {
-         chosenLoc = bestLocs[foundLocListMenu.listBox->selectedRow];
+         currentLoc = bestLocs[foundLocListMenu.listBox->selectedRow];
          return &locOptionsMenu;
      }
      else

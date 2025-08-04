@@ -45,6 +45,9 @@
         "cstdlib": "c",
         "nvs_flash.h": "c",
         "esp_wifi.h": "c",
-        "esp_log.h": "c"
+        "esp_log.h": "c",
+        "globals_menus.h": "c",
+        "string.h": "c",
+        "rfid.h": "c"
     }
 }

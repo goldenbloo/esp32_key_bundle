@@ -38,15 +38,17 @@ void save_tag_menu_enter()
     keypad.lastPressedButton = -1;
     keypad.displayCharWidth = 16;
     saveTagMenu.status = EVT_ON_ENTRY;
-    saveTagMenu.selectedOption = NO_OPTION;
+    saveTagMenu.selectedOption = NOT_SELECTED;
 }
 
 menu_t* save_tag_menu_handle(int32_t event)
 {
     if (saveTagMenu.status == EVT_ON_ENTRY) saveTagMenu.status = 0;
+
+    if (saveTagMenu.status != EVT_SAVE_SUCCESS && saveTagMenu.status != EVT_SAVE_FAIL)
     switch (event)
     {
-    case EVT_KEYPAD_PRESS:
+    case EVT_KEYPAD_PRESS:        
         saveTagMenu.status = EVT_KEYPAD_PRESS;
         break;
 
@@ -79,15 +81,19 @@ menu_t* save_tag_menu_handle(int32_t event)
                     memset(loc.bssids[i], 0, sizeof(loc.bssids[i]));
                     loc.rssis[i] = 0;
                 }
-                strncpy(loc.name, saveTagMenu.textBox->textFieldBuffer, sizeof(loc.name));
 
+                strncpy(loc.name, saveTagMenu.textBox->textFieldBuffer, sizeof(loc.name));
                 memcpy(loc.tag, currentTagArray, sizeof(loc.tag));
-                append_location(&loc);
-            }            
-            // TODO: Show save or error message
-            // Fall through to CANCEL_OPTION to return to main menu         
-            [[fallthrough]];  
-            // break;
+
+                if (write_location(&loc))                
+                    saveTagMenu.status = EVT_SAVE_SUCCESS;
+                else
+                    saveTagMenu.status = EVT_SAVE_FAIL;
+                
+                display_delay_cb_arg = KEY_BACK;
+                esp_timer_start_once(display_delay_timer_handle, 2000 * 1000ULL);
+            }
+            break;
 
         case CANCEL_OPTION:
          uint32_t backEvent = KEY_BACK;
@@ -97,7 +103,6 @@ menu_t* save_tag_menu_handle(int32_t event)
         default:
             break;
         }
-
         break;
 
     default:
@@ -113,8 +118,10 @@ menu_t* save_tag_menu_handle(int32_t event)
 
 void save_tag_menu_draw()
 {
-    const char* TAG = "savetag";
+    // const char* TAG = "savetag";
     const char* locPromptStr = "Enter Location Name:";
+    const char* locSaveSuccessStr = "Save Successful";
+    const char* locSaveFailedStr = "Error: Save Failed";
     u8g2_SetFont(&u8g2, u8g2_font_6x13_tr);
 
     uint16_t locPromptPosY = saveTagMenu.startPosY + 2;
@@ -124,31 +131,40 @@ void save_tag_menu_draw()
     // u8g2_SetFontPosTop(&u8g2);
     switch (saveTagMenu.status)
     {
-    
-    case EVT_ON_ENTRY:
+
+    case EVT_SAVE_SUCCESS:
         u8g2_ClearBuffer(&u8g2);
-        u8g2_DrawUTF8(&u8g2, 0, locPromptPosY, locPromptStr);
-        // u8g2_DrawFrame(&u8g2, textFieldPosX-2, textFieldPosY, (u8g2_GetMaxCharWidth(&u8g2)+1) * displayCharWidth + 8, u8g2_GetMaxCharHeight(&u8g2) + 2);
-        u8g2_DrawXBM(&u8g2, 0, u8g2_GetDisplayHeight(&u8g2) - 8, 128, 8, save_cancel_unchecked_img);
-        [[fallthrough]];
+        u8g2_DrawUTF8(&u8g2, u8g2_GetDisplayWidth(&u8g2) / 2 - u8g2_GetUTF8Width(&u8g2, locSaveSuccessStr) / 2, u8g2_GetDisplayHeight(&u8g2) / 2, locSaveSuccessStr);
+        break;
+
+    case EVT_SAVE_FAIL:
+        u8g2_ClearBuffer(&u8g2);
+        u8g2_DrawUTF8(&u8g2, u8g2_GetDisplayWidth(&u8g2) / 2 - u8g2_GetUTF8Width(&u8g2, locSaveFailedStr) / 2, u8g2_GetDisplayHeight(&u8g2) / 2, locSaveFailedStr);
+        break;
 
     case EVT_KEYPAD_PRESS:
         // ESP_LOGI("savetag", "displayCharWidth: %d", displayCharWidth);
         text_field_draw(textFieldPosX, textFieldPosY);
         break;
 
-    default:       
-    
+    case EVT_ON_ENTRY:
+        u8g2_ClearBuffer(&u8g2);
+        u8g2_DrawUTF8(&u8g2, 0, locPromptPosY, locPromptStr);
+        text_field_draw(textFieldPosX, textFieldPosY);
+        [[fallthrough]];
+
+    default:
+
         switch (saveTagMenu.selectedOption)
         {
         case SAVE_OPTION:
-            ESP_LOGI(TAG, "Draw SAVE_OPTION");
-            u8g2_DrawXBM(&u8g2, 0, u8g2_GetDisplayHeight(&u8g2) - 8 ,128,8,SAVE_cancel_img);
-                break;
+            // ESP_LOGI(TAG, "Draw SAVE_OPTION");
+            u8g2_DrawXBM(&u8g2, 0, u8g2_GetDisplayHeight(&u8g2) - 8, 128, 8, SAVE_cancel_img);
+            break;
 
         case CANCEL_OPTION:
-            ESP_LOGI(TAG, "Draw CANCEL_OPTION");
-            
+            // ESP_LOGI(TAG, "Draw CANCEL_OPTION");
+
             u8g2_DrawXBM(&u8g2, 0, u8g2_GetDisplayHeight(&u8g2) - 8 ,128,8,SAVE_cancel_img);
             u8g2_SetDrawColor(&u8g2, 2);
             u8g2_DrawBox(&u8g2, 0, u8g2_GetDisplayHeight(&u8g2)-8, 128, 8);
@@ -157,7 +173,8 @@ void save_tag_menu_draw()
             break;
         
         case NOT_SELECTED:    
-        ESP_LOGI(TAG, "Draw NOT_SELECTED");    
+        // ESP_LOGI(TAG, "Draw NOT_SELECTED");    
+        u8g2_DrawXBM(&u8g2, 0, u8g2_GetDisplayHeight(&u8g2) - 8, 128, 8, save_cancel_unchecked_img);
             break;
         
         default:
