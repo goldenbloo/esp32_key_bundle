@@ -10,7 +10,7 @@
 #include "littlefs_records.h"
 
 
-char *mainMenuEntries[] = {"Read tag", "Transmit tag", "Dump records", "Search location", "Delete all tags"};
+char *mainMenuEntries[] = {"Read tag", "Transmit tag", "Dump records", "Search location", "Delete all tags i mean ALL TAGS","dummy"};
 menu_listbox_t mainMenuListBox = {
     .list = mainMenuEntries,
     .listSize = sizeof(mainMenuEntries) / sizeof(char *),
@@ -36,8 +36,9 @@ menu_t *main_menu_handle(int32_t event)
     {
         switch (mainMenu.listBox->selectedRow)
         {
-        case 0: // Receive tag choice
+        case 0: // Read tag choice
             ESP_LOGI(TAG, "enter to receive");
+            scanTagMenu.nextMenu = NULL;
             return &scanTagMenu;
             break;
 
@@ -52,7 +53,8 @@ menu_t *main_menu_handle(int32_t event)
             break;
 
         case 3: // Search location
-
+            searchLocMenu.nextMenu = &foundLocListMenu;
+            return &searchLocMenu;
             break;
 
         case 4: // Delete all locations choice
@@ -73,5 +75,5 @@ void main_menu_draw()
 
 void main_menu_exit()
 {
-    // ssd1306_clear_screen(devPtr, false);
+    
 }

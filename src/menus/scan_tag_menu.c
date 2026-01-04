@@ -7,7 +7,7 @@
 #include "esp_log.h"
 #include "rfid.h"
 #include "menus.h"
-#include "ssd1306.h"
+
 #include "littlefs_records.h"
 #include "globals_menus.h"
 
@@ -32,20 +32,30 @@ menu_t *scan_tag_menu_handle(int32_t event)
     if (scanTagMenu.status == EVT_ON_ENTRY)
         scanTagMenu.status = 0;
     const char *TAG = "scan_tag_handle";
-    if (event == EVT_RFID_SCAN_DONE)
+    switch (event)
     {
+    case EVT_RFID_SCAN_DONE:
         scanTagMenu.status = event; // Send event data to dislapy callback
         // Delay timer to show access points
         display_delay_cb_arg = EVT_NEXT_MENU;
         esp_err_t err = esp_timer_start_once(display_delay_timer_handle, 2000 * 1000ULL);
         if (err != ESP_OK)
             ESP_LOGE(TAG, "Failed to create delay timer: %s", esp_err_to_name(err));
-    }
-    else if (event == EVT_NEXT_MENU)
+        break;
+    
+    case EVT_NEXT_MENU:
+    if ( scanTagMenu.nextMenu == NULL)
     {
         scanWifiMenu.nextMenu = &resolveLocationMenu; // Set next menu in wifi scan menu
         return &scanWifiMenu;
     }
+    else
+        return scanTagMenu.nextMenu;
+    break;
+
+    default:
+        break;
+    }    
     return NULL;
 }
 
@@ -71,13 +81,11 @@ void scan_tag_menu_draw()
                       u8g2_GetDisplayHeight(&u8g2) / 2 - 10, doneStr);
         u8g2_DrawUTF8(&u8g2, u8g2_GetDisplayWidth(&u8g2) / 2 - u8g2_GetStrWidth(&u8g2, tagStr) / 2,
                       u8g2_GetDisplayHeight(&u8g2) / 2 + 10, tagStr);
-        // ssd1306_display_text(devPtr, startPosY, "Scan succesfull", 16, true);
-        // ssd1306_display_text(devPtr, startPosY + 2, str, 16, false);
+
     }
     else if (scanTagMenu.status == EVT_ON_ENTRY)
     {
         u8g2_DrawUTF8(&u8g2, u8g2_GetDisplayWidth(&u8g2) / 2 - u8g2_GetStrWidth(&u8g2, tagScanningStr) / 2,
                       u8g2_GetDisplayHeight(&u8g2) / 2 - 10, tagScanningStr);
-        // ssd1306_display_text(devPtr, scanTagMenu.startPosY, "Scanning tag   ", 16, false);
     }
 }

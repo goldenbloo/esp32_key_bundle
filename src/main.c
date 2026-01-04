@@ -42,7 +42,7 @@ rmt_transmit_config_t trans_config  = {
         .flags.queue_nonblocking = true,
     };
 rmt_symbol_word_t pulse_pattern[RMT_SIZE];
-SemaphoreHandle_t scanSem, scanDoneSem, rfidDoneSem, drawMutex;
+SemaphoreHandle_t scanSem, scanDoneSem, rfidDoneSem, scrollDeleteSem, drawMutex;
 
 u8g2_t u8g2;
 
@@ -69,15 +69,7 @@ void rfid_deferred_task(void *arg)
                     long_tag |= ((uint64_t)evt.tag[i] << (8 * i));
                 currentTag = long_tag;
                 memcpy(currentTagArray, evt.tag, sizeof(currentTagArray));
-                // if (last_tag != long_tag)
-                // {
-                //     last_tag = long_tag;
-                //     sprintf(str, "0x%010" PRIX64, long_tag);
-                //     // ssd1306_display_text(&dev, 0, str, 12, 0);
-                //     ESP_LOGI(TAG, "tag: %#llx, idx: %ld", long_tag, evt.idx);
-                //     ESP_LOGI(TAG, "str: %s", int_to_char_bin(str,evt.buf));
-                // }                
-                // xSemaphoreGive(rfidDoneSem);
+
                 int32_t event = EVT_RFID_SCAN_DONE;
                 xQueueSendToBack(uiEventQueue, &event, pdMS_TO_TICKS(15));
                 rfid_disable_rx_tx_tag();
@@ -369,11 +361,13 @@ void app_main(void)
     scanSem = xSemaphoreCreateBinary();
     scanDoneSem = xSemaphoreCreateBinary();
     rfidDoneSem = xSemaphoreCreateBinary();
+    scrollDeleteSem = xSemaphoreCreateBinary();
     drawMutex = xSemaphoreCreateMutex();    
     // configASSERT(modeSwitchSem != NULL);
     configASSERT(scanSem != NULL);
     configASSERT(scanDoneSem != NULL);
     configASSERT(rfidDoneSem != NULL);
+    configASSERT(scrollDeleteSem != NULL);
     configASSERT(drawMutex != NULL);
 
 
@@ -426,7 +420,7 @@ void app_main(void)
     }
     xTaskCreate(ui_handler_task, "ui_handler_task", 4096, NULL, 3, &uiHandlerTask);
 
-    xTaskCreate(tag_tx_cycle_callback, "tag_tx_cycle_callback", 2048, NULL, 0, &rfidAutoTxHandler);
-    vTaskSuspend(rfidAutoTxHandler);    
+    // xTaskCreate(tag_tx_cycle_callback, "tag_tx_cycle_callback", 2048, NULL, 0, &rfidAutoTxHandler);
+    // vTaskSuspend(rfidAutoTxHandler);    
     
 }

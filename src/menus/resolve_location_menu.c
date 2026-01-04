@@ -7,7 +7,7 @@
 #include "esp_log.h"
 #include "rfid.h"
 #include "menus.h"
-#include "ssd1306.h"
+
 #include "littlefs_records.h"
 #include "globals_menus.h"
 
@@ -59,8 +59,8 @@ menu_t* resolve_location_menu_handle(int32_t event)
             {
             case OVERWRITE_OPTION:
                 memcpy(bestLocs[0].tag, currentTagArray, sizeof(currentTagArray));
-                overwrite_location(&bestLocs[0]);
-                sd.exit = true;
+                write_location(&bestLocs[0]);
+                scroll_task_stop();
                 resolveLocationMenu.status = EVT_OVERWRITE_TAG;                
                 display_delay_cb_arg = KEY_BACK;
                 esp_timer_start_once(display_delay_timer_handle, 3000 * 1000ULL);
@@ -96,9 +96,9 @@ void resolve_location_menu_exit()
 {
     // ESP_LOGI("resolve_exit", "Stop draw task");
     esp_timer_stop(display_delay_timer_handle);
-    sd.exit = true;
-    // if (scrollHandle != NULL)
-    //     vTaskDelete(scrollHandle);
+    scroll_task_stop();
+    // if (scrollTaskHandle != NULL)
+    //     vTaskDelete(scrollTaskHandle);
 }
 
 void resolve_location_menu_draw()
@@ -112,8 +112,8 @@ void resolve_location_menu_draw()
 
     
     u8g2_SetFont(&u8g2, u8g2_font_6x10_tr);
-    int charHeight = u8g2_GetMaxCharHeight(&u8g2) - 1;
-    // int charWidth = u8g2_GetMaxCharWidth(&u8g2);
+    int16_t charHeight = u8g2_GetMaxCharHeight(&u8g2) - 1;
+    // int16_t charWidth = u8g2_GetMaxCharWidth(&u8g2);
     switch (resolveLocationMenu.status)
     {
     case EVT_OVERWRITE_TAG:
@@ -130,7 +130,7 @@ void resolve_location_menu_draw()
 
     case EVT_ON_ENTRY:
         u8g2_ClearBuffer(&u8g2);
-        int posY = resolveLocationMenu.startPosY + 1;
+        int16_t posY = resolveLocationMenu.startPosY + 1;
         u8g2_DrawUTF8(&u8g2, 0, posY, matchFoundStr);
         u8g2_SetDrawColor(&u8g2, 2);
         u8g2_DrawBox(&u8g2, 0, posY, u8g2_GetUTF8Width(&u8g2, matchFoundStr), charHeight);
@@ -140,20 +140,22 @@ void resolve_location_menu_draw()
         posY += charHeight + 3;
         u8g2_DrawHLine(&u8g2, 0, posY - 1, 128);
         u8g2_DrawHLine(&u8g2, 0, posY + charHeight + 1, 128);
-        int posX = (u8g2_GetDisplayWidth(&u8g2) / 2) - (u8g2_GetStrWidth(&u8g2, (bestLocs[0].name)) / 2);
+        int16_t posX = (u8g2_GetDisplayWidth(&u8g2) / 2) - (u8g2_GetStrWidth(&u8g2, (bestLocs[0].name)) / 2);
         if (u8g2_GetUTF8Width(&u8g2, bestLocs[0].name) > u8g2_GetDisplayWidth(&u8g2))
         {
-            sd.delayStartStopMs = 1000;
-            sd.delayScrollMs = 100;
-            sd.font = u8g2.font;
-            sd.string = bestLocs[0].name;
-            sd.strWidth = u8g2_GetUTF8Width(&u8g2, bestLocs[0].name);
-            sd.x = 0;
-            sd.y = posY;
-            sd.exit = false;
+            scroll_data_t* pTaskData = (scroll_data_t*) malloc(sizeof(scroll_data_t));
+            pTaskData->delayStartStopMs = 1000;
+            pTaskData->delayScrollMs = 100;            
+            pTaskData->string = bestLocs[0].name;
+            pTaskData->strWidth = u8g2_GetUTF8Width(&u8g2, bestLocs[0].name);
+            pTaskData->textX = 0;
+            pTaskData->textY = posY;    
+            pTaskData->bgBoxX = 0;
+            pTaskData->bgBoxY = posY;    
+            pTaskData->invert = false;
 
-            ESP_LOGI(TAG, "createTask string: %s; strWidth: %d", sd.string, sd.strWidth);
-            xTaskCreate(scroll_text_task, "scroll_task", 2048, &sd, 2, &scrollHandle);
+            // ESP_LOGI(TAG, "createTask string: %s; strWidth: %d", sd.string, sd.strWidth);
+            xTaskCreate(scroll_text_task, "scroll_task", 2048, pTaskData, 2, &scrollTaskHandle);
         }
         else
             u8g2_DrawUTF8(&u8g2, posX, posY, bestLocs[0].name);

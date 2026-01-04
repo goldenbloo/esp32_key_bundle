@@ -7,7 +7,7 @@
 #include "esp_log.h"
 #include "rfid.h"
 #include "menus.h"
-#include "ssd1306.h"
+
 #include "littlefs_records.h"
 #include "globals_menus.h"
 
@@ -89,7 +89,7 @@ void scan_wifi_menu_draw()
     if (scanWifiMenu.status == EVT_WIFI_SCAN_DONE)
     {
         u8g2_ClearBuffer(&u8g2);
-        ssd1306_display_wifi_aps(ap_records,ap_count, scanWifiMenu.startPosY);
+        display_wifi_aps(ap_records,ap_count, scanWifiMenu.startPosY);
         
     } 
     else if (scanWifiMenu.status == EVT_ON_ENTRY || scanWifiMenu.status == EVT_APS_NOT_FOUND) 

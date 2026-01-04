@@ -245,7 +245,7 @@ void rfid_raw_tag_to_rmt(rmt_symbol_word_t *rmtArr, uint64_t rawTag)
 
 void rfid_tag_to_array(uint64_t tag, uint8_t tagArr[])
 {
-    for (int i = 0; i < 5; ++i) {
+    for (uint8_t i = 0; i < 5; ++i) {
     tagArr[i] = (tag >> (i * 8)) & 0xFF;
 }
 }

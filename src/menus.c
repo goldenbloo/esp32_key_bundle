@@ -7,7 +7,6 @@
 #include "esp_log.h"
 #include "rfid.h"
 #include "menus.h"
-// #include "ssd1306.h"
 #include "bitmaps.h"
 #include "littlefs_records.h"
 #include <u8g2.h>
@@ -39,11 +38,23 @@ menu_t* go_to_main_menu()
             return returnMenu;
     }
 }
+menu_t *go_to_loc_options_menu()
+{
+    menu_t *returnMenu = NULL;
+    while (1)
+    {
+        returnMenu = stack_pop();
+        if (returnMenu == NULL)
+            return NULL;
+        if (returnMenu->menuId == LOC_EDIT_OPTIONS_MENU)
+            return returnMenu;
+    }
+}
 
 //===================================================================
-void ssd1306_display_wifi_aps(wifi_ap_record_t *ap_records, uint16_t ap_count, uint32_t startPosY)
+void display_wifi_aps(wifi_ap_record_t *ap_records, uint16_t ap_count, uint32_t startPosY)
 {
-    const int maxPages = (u8g2_GetDisplayHeight(&u8g2) - startPosY) / (u8g2_GetMaxCharHeight(&u8g2)+2);
+    const uint8_t maxPages = (u8g2_GetDisplayHeight(&u8g2) - startPosY) / (u8g2_GetMaxCharHeight(&u8g2)+2);
     u8g2_SetFont(&u8g2, u8g2_font_NokiaSmallBold_tr);
     char str[30];
     // ssd1306_clear_screen(devPtr, false);
@@ -64,19 +75,45 @@ void ssd1306_display_wifi_aps(wifi_ap_record_t *ap_records, uint16_t ap_count, u
 
 void display_list(menu_t* menu) 
 {        
+    uint16_t posX = 5;
     uint8_t listSize = menu->listBox->listSize;    
     u8g2_SetFont(&u8g2, u8g2_font_7x13_tr);
-    int maxDisplayItems = (u8g2_GetDisplayHeight(&u8g2) - menu->startPosY) / (u8g2_GetMaxCharHeight(&u8g2)+1);
+    uint8_t maxDisplayItems = (u8g2_GetDisplayHeight(&u8g2) - menu->startPosY) / (u8g2_GetMaxCharHeight(&u8g2)+1);
     if (menu->listBox->maxRows > maxDisplayItems) menu->listBox->maxRows = maxDisplayItems;
     
     ESP_LOGI("display list", "maxRows: %d", menu->listBox->maxRows);
+    ESP_LOGI("display list", "MaxCharWidth: %d", u8g2_GetMaxCharWidth(&u8g2));
+    scroll_task_stop();
     u8g2_ClearBuffer(&u8g2);
-    for (int i = 0; i < (menu->listBox->maxRows) && (i < listSize); i++)
+    for (int16_t i = 0; i < (menu->listBox->maxRows) && (i < listSize); i++)
     {
-        int idx = i + menu->listBox->topRowIdx;
-        // Ensure you don't read past the end of the list if there's a logic error elsewhere
-        if (idx >= listSize) continue;       
-        u8g2_DrawButtonUTF8(&u8g2, 5, (i) * (u8g2_GetMaxCharHeight(&u8g2) + 1) + menu->startPosY,
+        int16_t idx = i + menu->listBox->topRowIdx;
+        
+        if (idx >= listSize) continue;     
+        
+        uint16_t posY = (i) * (u8g2_GetMaxCharHeight(&u8g2) + 1) + menu->startPosY;
+        bool isSelected = (idx == menu->listBox->selectedRow);
+        uint16_t stringLen = u8g2_GetUTF8Width(&u8g2, menu->listBox->list[idx]);
+
+        
+        if (stringLen > u8g2_GetDisplayWidth(&u8g2) && isSelected)
+        {
+            scroll_data_t* pTaskData = (scroll_data_t*) malloc(sizeof(scroll_data_t));
+            pTaskData->string = menu->listBox->list[idx];
+            pTaskData->strWidth = stringLen;
+            pTaskData->invert = isSelected;
+            pTaskData->textX = posX;
+            pTaskData->textY = posY;
+            pTaskData->bgBoxX = 0;
+            pTaskData->bgBoxY = posY;
+            pTaskData->delayStartStopMs = 1000;
+            pTaskData->delayScrollMs = 100;            
+            
+            xTaskCreate(scroll_text_task, "scroll_task", 2048, pTaskData, 2, &scrollTaskHandle);
+        }
+        else
+            // u8g2_DrawUTF8(&u8g2, posX, posY, menu->listBox->list[idx]);        
+        u8g2_DrawButtonUTF8(&u8g2, posX, posY,
                             idx == menu->listBox->selectedRow ? U8G2_BTN_INV : U8G2_BTN_BW0,
                             u8g2_GetDisplayWidth(&u8g2) - 5 * 2, 5, 0, menu->listBox->list[idx]);        
     }
@@ -134,7 +171,7 @@ void keypad_button_press(int8_t pressedButton)
             keypad.lastPressedButton = -1;
             keypad.currentPressCount = 0;
             // remove the “pending” slot
-            int pendingIndex = keypad.bufferPos + 1;
+            int16_t pendingIndex = keypad.bufferPos + 1;
             keypad.textBuffer[pendingIndex] = '\0';
         }
         // Otherwise, backspace the last confirmed character (if any).
@@ -176,7 +213,7 @@ void keypad_button_press(int8_t pressedButton)
                 keypad.currentPressCount = 0;
             }
             // Write/update the pending character at index (bufferPos+1) in the same buffer.
-            int pendingIndex = keypad.bufferPos + 1;
+            int16_t pendingIndex = keypad.bufferPos + 1;
             if (pendingIndex < keypad.bufferSize - 1)
             { // Make sure there is room for the char and a null terminator.
                 char newChar = keyMap[pressedButton][keypad.currentPressCount];
@@ -244,32 +281,24 @@ void ui_handler_task(void* args)
             // Allow back navigation from any state
             if (event == KEY_BACK)
             {
+                menu_t *previousMenu = NULL;
                 if (currentMenu->back_handler_func != NULL)
+                    previousMenu = currentMenu->back_handler_func();
+                else
+                    previousMenu = stack_pop();
+
+                if (previousMenu != NULL)
                 {
-                     menu_t *perviousMenu = currentMenu->back_handler_func();
-                    if (perviousMenu != NULL)                    
-                    {                       
-                        if (currentMenu->exit_func)
-                            currentMenu->exit_func();                        
-                        currentMenu = perviousMenu;
-                        if (currentMenu->enter_func)
-                            currentMenu->enter_func();                            
-                    }
+                    if (currentMenu->exit_func)
+                        currentMenu->exit_func();
+                    scroll_task_stop();
+                    currentMenu = previousMenu;
+
+                    if (currentMenu->enter_func)
+                        currentMenu->enter_func();
                 }
                 else
-                {
-                    menu_t *perviousMenu = stack_pop();
-                    if (perviousMenu != NULL)
-                    {
-                        if (currentMenu->exit_func)
-                            currentMenu->exit_func();
-
-                        currentMenu = perviousMenu;
-
-                        if (currentMenu->enter_func)
-                            currentMenu->enter_func();
-                    }
-                }
+                    ESP_LOGE("ui_handler","Warning: No previous menu to navigate to");
             }
             else
             {   // Let the current state handle the event
@@ -288,6 +317,7 @@ void ui_handler_task(void* args)
                             currentMenu->exit_func();
 
                         // Officially change state
+                        scroll_task_stop();
                         currentMenu = nextMenu;
 
                         // Perform entry action of new state
@@ -320,18 +350,18 @@ void display_delay_timer_callback(void* event)
 
 void tag_tx_cycle_callback()
 {
-    int i = 0;
+    int8_t idx = 0;
     if (bestLocsNum <= 0) return;
 
     for (;;)
     {
-        uint64_t rawTag = rfid_arr_tag_to_raw_tag(bestLocs[i].tag);
+        uint64_t rawTag = rfid_arr_tag_to_raw_tag(bestLocs[idx].tag);
         rfid_enable_tx_raw_tag(rawTag);
         // ESP_LOGI("tag_tx_cycle", "loc: %s\ttag: 0x%010llX", bestLocs[i].name, tag);
         vTaskDelay(1000 / portTICK_PERIOD_MS);
-        i++;
-        if (i >= bestLocsNum)
-            i = 0;
+        idx++;
+        if (idx >= bestLocsNum)
+            idx = 0;
     }
 }
 
@@ -370,54 +400,84 @@ void list_event_handle(menu_t *menu, int32_t event)
 
 void scroll_text_task(void* arg)
 {
-    scroll_data_t *scrollPtr = arg;
-    int offset = 0;
-    const char* TAG = "scroll";
-    // const uint8_t *prevFont = u8g2.font;
-    // if (scrollPtr != NULL)
-        // u8g2_SetFont(&u8g2, scrollPtr->font);   
-    // int strLength = u8x8_GetUTF8Len(&u8g2.u8x8, scrollPtr->string);
-    int dispayWidth = u8g2_GetDisplayWidth(&u8g2);
-    int charHeight = u8g2_GetMaxCharHeight(&u8g2);
-    ESP_LOGI(TAG, "strWidth=%d dWidth=%d", scrollPtr->strWidth, dispayWidth);
+    scroll_data_t *pData = (scroll_data_t*) arg;
+    if (pData == NULL) 
+        vTaskDelete(NULL);
+    int16_t offset = 0;
+    const char* TAG = "scroll";  
+    uint16_t dispayWidth = u8g2_GetDisplayWidth(&u8g2);
+    uint16_t charHeight = u8g2_GetMaxCharHeight(&u8g2);
+    ESP_LOGI(TAG, "strWidth=%d dWidth=%d", pData->strWidth, dispayWidth);
+    ESP_LOGI(TAG, "pData->textY: %d", pData->textY);
     vTaskDelay(pdMS_TO_TICKS(50));
 
     for (;;)
     {
-        // if (scrollPtr->font != NULL)
-        //     u8g2_SetFont(&u8g2, scrollPtr->font);
-        if (scrollPtr->exit)
-            vTaskDelete(NULL);
-
-        u8g2_SetDrawColor(&u8g2, 0);
-        u8g2_DrawBox(&u8g2, scrollPtr->x, scrollPtr->y, dispayWidth, charHeight);
-        u8g2_SetDrawColor(&u8g2, 1);
-        u8g2_DrawUTF8(&u8g2, scrollPtr->x - offset, scrollPtr->y, scrollPtr->string);
+        u8g2_SetDrawColor(&u8g2, pData->invert);
+        u8g2_DrawBox(&u8g2, pData->bgBoxX, pData->bgBoxY, dispayWidth, charHeight);
+        u8g2_SetDrawColor(&u8g2, !(pData->invert));
+        u8g2_DrawUTF8(&u8g2, pData->textX - offset, pData->textY, pData->string);
+        u8g2_SetDrawColor(&u8g2, 1);        
 
         // u8g2_SetFont(&u8g2, prevFont);
         if (xSemaphoreTake(drawMutex, portMAX_DELAY) == pdTRUE)
         {
-            u8g2_UpdateDisplayArea(&u8g2, scrollPtr->x / 8, scrollPtr->y / 8, dispayWidth / 8, charHeight / 8 + 2);
+            // u8g2_UpdateDisplayArea(&u8g2, pData->x / 8, pData->y / 8, dispayWidth / 8, charHeight / 8 + 2);
+            u8g2_UpdateDisplayArea(&u8g2, 0, pData->textY / 8, dispayWidth / 8, charHeight / 8 + 1);
             xSemaphoreGive(drawMutex);
         }    
+        uint32_t delay = 0;
 
         if (offset == 0)
         {
-            // ESP_LOGI(TAG, "offset == 0 delay %d", scrollPtr->delayStartStopMs); 
-            vTaskDelay(pdMS_TO_TICKS(scrollPtr->delayStartStopMs));
-        }
-           
-        if (scrollPtr->strWidth - offset < dispayWidth)
+            delay = pData->delayStartStopMs;
+            offset += 2;
+        } 
+        else  if ((pData->strWidth - offset + pData->textX) < dispayWidth)
         {
             offset = 0;
-            // ESP_LOGI(TAG, "sWidth - o < dWidth delay %d", scrollPtr->delayStartStopMs);
-            vTaskDelay(pdMS_TO_TICKS(scrollPtr->delayStartStopMs));            
+            delay = pData->delayStartStopMs;
         }
         else
         {
             offset += 2;
-            // ESP_LOGI(TAG, "offset += 2 delay %d",scrollPtr->delayScrollMs);
-            vTaskDelay(pdMS_TO_TICKS(scrollPtr->delayScrollMs));
+            delay = pData->delayScrollMs;
+        }        
+
+        if(xTaskNotifyWait(0, 0, NULL, pdMS_TO_TICKS(delay))== pdTRUE)
+        {            
+            free(pData); 
+            xSemaphoreGive(scrollDeleteSem); 
+            vTaskDelete(NULL); 
         }
+    }
+}
+
+void text_field_draw(uint32_t textFieldPosX, uint32_t textFieldPosY)
+{
+    uint16_t displayCharWidth = (u8g2_GetDisplayWidth(&u8g2) - textFieldPosX) / (u8g2_GetMaxCharWidth(&u8g2) + 1) - 2;
+    const char *startPtr = keypad.bufferPos < displayCharWidth ? keypad.textBuffer : keypad.textBuffer + (keypad.bufferPos - displayCharWidth + 1);
+        u8g2_SetDrawColor(&u8g2, 0); // 0 = background
+        u8g2_DrawBox(&u8g2, 0, textFieldPosY, u8g2_GetDisplayWidth(&u8g2), u8g2_GetMaxCharHeight(&u8g2));
+        u8g2_SetDrawColor(&u8g2, 1); // Reset to foreground for next text
+        u8g2_DrawFrame(&u8g2, textFieldPosX - 2, textFieldPosY, (u8g2_GetMaxCharWidth(&u8g2) + 1) * displayCharWidth + 8, u8g2_GetMaxCharHeight(&u8g2) + 2);
+        u8g2_DrawUTF8(&u8g2, textFieldPosX, textFieldPosY, startPtr);
+}
+
+void scroll_task_stop()
+{   
+    if (scrollTaskHandle != NULL) 
+    {
+        ESP_LOGI("exit_handler", "A scroll task is running. Signaling it to delete.");
+
+        xTaskNotify(scrollTaskHandle, 1, eNoAction);        
+        if (xSemaphoreTake(scrollDeleteSem, pdMS_TO_TICKS(1000)) == pdTRUE)         
+            ESP_LOGI("exit_handler", "Scroll task confirmed deletion.");        
+        else 
+        {
+            ESP_LOGW("exit_handler", "Scroll task did not respond. Forcing deletion.");
+            vTaskDelete(scrollTaskHandle);
+        }
+        scrollTaskHandle = NULL;
     }
 }

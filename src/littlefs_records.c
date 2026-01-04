@@ -53,15 +53,20 @@ bool append_location(const location_t *loc)
     return (written == 1);
 }
 
-bool overwrite_location(const location_t *loc)
+bool write_location(const location_t *loc)
 {
     FILE *f = fopen("/littlefs/locations.bin", "r+b");
-    if (!f)
+    if (f == NULL)
     {
-        ESP_LOGE(TAG, "Failed to open file for overwrite");
-        return false;
+        f = fopen("/littlefs/locations.bin", "wb");
+        if (f == NULL)
+        {
+            ESP_LOGE(TAG, "Failed to create locations file");
+            return false;
+        }
     }
-    long offset = (long)(loc->id - 1) * sizeof(location_t);
+
+    long offset = (long)(loc->id) * sizeof(location_t);
     if (fseek(f, offset, SEEK_SET) != 0)
     {
         ESP_LOGE(TAG, "Failed to seek to record %ld", loc->id);
@@ -105,7 +110,7 @@ bool read_all_locations(void)
     location_t loc;    
     while (fread(&loc, sizeof(location_t), 1, f) == 1) 
     {
-        ESP_LOGI(TAG, "ID=%lu\tName=%s\ttag=0x%02x%02x%02x%02x%02x", loc.id, loc.name, loc.tag[4], loc.tag[3], loc.tag[2], loc.tag[1], loc.tag[0]);
+        ESP_LOGI(TAG, "ID=%ld\tName=%s\ttag=0x%02x%02x%02x%02x%02x", loc.id, loc.name, loc.tag[4], loc.tag[3], loc.tag[2], loc.tag[1], loc.tag[0]);
         for (int i = 0; i < BSSID_MAX; i++)
         {
             if (memcmp(loc.bssids[i], zero_bssid, sizeof(zero_bssid) != 0))
@@ -130,7 +135,7 @@ bool find_best_location(uint8_t query_bssid[][6], int8_t query_rssi[], uint8_t q
 
     while (fread(&loc, sizeof(location_t), 1, f) == 1)
     {
-        
+        if (loc.id < 0) continue;
         int32_t dist = 0;
         for (int i = 0; i < query_ap_count; i++) // query loop
         {
@@ -187,9 +192,14 @@ int32_t find_multiple_best_locations(uint8_t query_bssid[][6], int8_t query_rssi
         while (fread(&loc, sizeof(location_t), 1, f) == 1)
         {
             // skip ones we've already selected
+            if (loc.id < 0) continue;
             bool skip = false;
             for (int k = 0; k < match; k++)
-                if (loc.id == selectedIds[k]) { skip = true; break; }
+                if (loc.id == selectedIds[k]) 
+                { 
+                    skip = true;
+                     break; 
+                }
             if (skip) continue;
 
             // compute squared Euclidean distance over the query APs
@@ -200,9 +210,11 @@ int32_t find_multiple_best_locations(uint8_t query_bssid[][6], int8_t query_rssi
                 // look for the same BSSID in this loc
                 for (int j = 0; j < BSSID_MAX; j++)
                 {
+                    // Check if bssid is zero
                     if (memcmp(loc.bssids[j], zero_bssid, 6) == 0)
-                        break; // no more valid entries
+                        break; 
 
+                    // Check if record bssid matching with scanned bssid
                     if (memcmp(loc.bssids[j], query_bssid[i], 6) == 0)
                     {
                         int32_t diff = (int32_t)loc.rssis[j] - query_rssi[i];
@@ -244,28 +256,26 @@ int32_t find_best_locations_from_scan(const wifi_ap_record_t* ap_records, int ap
 {
     const char *TAG = "find_locations";
     int locNum = 0;
-    if (ap_count == 0) return 0; // Nothing to process    
+    if (ap_count == 0) return 0;
 
-    // 1. Allocate temporary memory for BSSIDs and RSSIs
+    
     uint8_t (*bssids)[6] = malloc(sizeof(*bssids) * ap_count);
     int8_t *rssis = malloc(sizeof(*rssis) * ap_count);
 
     if (!bssids || !rssis)
     {
         ESP_LOGE(TAG, "Failed to allocate memory for Wi-Fi data extraction");
-        free(bssids); // free is safe to call on NULL
+        free(bssids); 
         free(rssis);
-        return -1; // Return an error code
+        return -1; 
     }
 
-    // 2. Extract the data from the records
     for (int i = 0; i < ap_count; i++)
     {
         memcpy(bssids[i], ap_records[i].bssid, sizeof(ap_records[i].bssid));
         rssis[i] = ap_records[i].rssi;
     }
 
-    // 3. Call the core logic function
     if (singleMatch) 
     {
         bool found = find_best_location(bssids, rssis, ap_count, &bestLocs_out[0]);
@@ -273,7 +283,7 @@ int32_t find_best_locations_from_scan(const wifi_ap_record_t* ap_records, int ap
     }
     else
         locNum = find_multiple_best_locations(bssids, rssis, ap_count, bestLocs_out);
-    // 4. Clean up the temporary memory
+    
     free(bssids);
     free(rssis);
 
@@ -287,24 +297,26 @@ int32_t get_next_location_id(void)
     {  // File doesn't exist yet; start IDs from 0
         return 0;
     }
-    // Seek to the last record
-    if (fseek(f, -((long)sizeof(location_t)), SEEK_END) != 0)
+
+    location_t location;
+    int32_t returnId = 0;
+
+    // Read the file one record at a time from the beginning
+    while (fread(&location, sizeof(location_t), 1, f) == 1)
     {
-        fclose(f);
-        return 1;
+        if (location.id == -1)
+        {
+            fclose(f);
+            return returnId; // The index IS the correct ID to reuse
+        }
+        returnId++;
     }
-    location_t last;
-    if (fread(&last, sizeof(location_t), 1, f) != 1)
-    {
-        fclose(f);
-        ESP_LOGE(TAG,"last loc read failed");
-        return -1;
-    }
+
     fclose(f);
-    return last.id + 1;
+    return returnId; // The next ID is the total number of records
 }
 
-int find_locations_by_name(const char *substr, location_t results[], int max_results)
+int32_t find_locations_by_name(const char *substr, location_t results[], int max_results)
 {
     if (substr == NULL || *substr == '\0' || max_results <= 0) {
         return 0;
@@ -316,19 +328,52 @@ int find_locations_by_name(const char *substr, location_t results[], int max_res
         return 0;
     }
 
-    int idx = 0;
+    int32_t idx = 0;
     location_t loc;
 
-    while (idx < max_results
-           && fread(&loc, sizeof(location_t), 1, f) == 1)
+    while (idx < max_results && fread(&loc, sizeof(location_t), 1, f) == 1)
     {
-        
-        if (strcasestr(loc.name, substr) != NULL)
-        {
-            results[idx++] = loc;
-        }
+        if (loc.id < 0) continue;
+        if (strcasestr(loc.name, substr) != NULL)        
+            results[idx++] = loc;        
     }
 
     fclose(f);
     return idx;
+}
+
+bool delete_location(int32_t id_to_delete)
+{
+    FILE *f = fopen("/littlefs/locations.bin", "r+b");
+    if (f == NULL)
+    {
+        ESP_LOGE(TAG, "Failed to open file to delete record");
+        return false;
+    }
+
+    // Seek to the beginning of the record to be deleted.
+    long offset = (long)id_to_delete * sizeof(location_t);
+    if (fseek(f, offset, SEEK_SET) != 0)
+    {
+        ESP_LOGE(TAG, "Failed to seek to record %ld for deletion", id_to_delete);
+        fclose(f);
+        return false;
+    }
+    
+    location_t blankLoc = {0};
+    blankLoc.id = -1; // ID for deleted record
+    
+    size_t written = fwrite(&blankLoc, sizeof(location_t), 1, f);
+    fclose(f);
+
+    if (written == 1)
+    {
+        ESP_LOGI(TAG, "Deleted and cleared record %ld", id_to_delete);
+        return true;
+    }
+    else
+    {
+        ESP_LOGE(TAG, "Failed to delete record %ld", id_to_delete);
+        return false;
+    }
 }
