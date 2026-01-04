@@ -50,7 +50,7 @@ uint64_t currentTag;
 uint8_t currentTagArray[5];
 QueueHandle_t uartQueue, uiEventQueue, modeSwitchQueue;
 TaskHandle_t uiHandlerTask = NULL, rfidAutoTxHandler = NULL;
-esp_timer_handle_t confirmation_timer_handle, display_delay_timer_handle;
+esp_timer_handle_t confirmation_timer_handle, display_delay_timer_handle, keypad_poll_handler;
 ui_event_e display_delay_cb_arg;
 
 void rfid_deferred_task(void *arg)
@@ -206,6 +206,23 @@ void gpio_pins_init()
         .pull_up_en = GPIO_PULLUP_ENABLE, // Enable pull-up if needed
         .pull_down_en = GPIO_PULLDOWN_DISABLE};
     ESP_ERROR_CHECK(gpio_config(&led_io));
+
+    // Keypad pin setup
+    gpio_config_t keypad_out = {
+        .mode = GPIO_MODE_OUTPUT,
+        .pin_bit_mask = (1ULL << CD4017_CLK) | (1ULL << CD4017_RST),
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,};
+    ESP_ERROR_CHECK(gpio_config(&keypad_out));
+
+    gpio_config_t keypad_in = {
+        .mode = GPIO_MODE_INPUT,
+        .pin_bit_mask = (1ULL << KEYPAD_C0) | (1ULL << KEYPAD_C1),
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,};
+    ESP_ERROR_CHECK(gpio_config(&keypad_in));
 }
 
 
@@ -299,6 +316,83 @@ void uart_event_task(void *pvParameters)
     vTaskDelete(NULL);
 }
 
+const ui_event_e keyLookup[10][2] = {
+    {KEY_9, KEY_SHIFT},      // ROW 0
+    {KEY_0, KEY_CLEAR_CHAR}, // ROW 1
+    {KEY_8, KEY_7},          // ROW 2
+    {KEY_3, KEY_2},          // ROW 3
+    {KEY_LEFT, KEY_ENTER},   // ROW 4
+    {0, 0},                  // ROW 5
+    {KEY_5, KEY_4},          // ROW 6
+    {KEY_6, KEY_1},          // ROW 7
+    {KEY_UP, KEY_BACK},      // ROW 8
+    {KEY_DOWN, KEY_RIGHT},   // ROW 9
+};
+
+uint8_t keypadRow = 0;
+uint8_t debounceCnt[10][2] = {0};
+bool pressedKey[10][2] = {0};          
+
+void keypad_poll_callback()
+{
+    const uint8_t treshold = 4;
+    uint8_t cols[2];
+    cols[0] = gpio_get_level(KEYPAD_C0);
+    cols[1] = gpio_get_level(KEYPAD_C1);
+
+    for (uint8_t i = 0; i < 2; i++)
+    {
+        if (cols[i] == 1)
+        {   
+            if (debounceCnt[keypadRow][i] < treshold) // Increase counter if pressed and less than treshold
+                debounceCnt[keypadRow][i]++;
+        }
+        else
+        {
+             if (debounceCnt[keypadRow][i] > 0) // Decrease counter if not pressed
+                debounceCnt[keypadRow][i]--;
+        }
+
+        if (debounceCnt[keypadRow][i] == treshold) // When counter reaches threshold then key pressed
+        {
+            if (pressedKey[keypadRow][i] == 0)
+            {
+                pressedKey[keypadRow][i] = true;
+                if (xQueueSendToBack(uiEventQueue, &keyLookup[keypadRow][i], pdMS_TO_TICKS(15))!= pdPASS)
+                {}
+                // printf("Key [%d][%d] Pressed\n", keypadRow, i);
+            }
+               
+        }
+        else if (debounceCnt[keypadRow][i] == 0) // When counter reaches zero then key released
+        {
+            if (pressedKey[keypadRow][i] == 1)
+            {
+                pressedKey[keypadRow][i] = false;
+                printf("Key [%d][%d] Released\n", keypadRow, i);
+            }
+            
+        }
+            
+    }
+
+    keypadRow++;
+    if (keypadRow >= 10) 
+    {
+        // Pulse Reset to go back to Q0
+        gpio_set_level(CD4017_RST, 1);
+        esp_rom_delay_us(1); 
+        gpio_set_level(CD4017_RST, 0);
+        keypadRow = 0;
+    } else 
+    {
+        // Pulse Clock to go to Q1, Q2, etc.
+        gpio_set_level(CD4017_CLK, 1);
+        esp_rom_delay_us(1);
+        gpio_set_level(CD4017_CLK, 0);
+    }
+    
+}
 
 
 
@@ -394,11 +488,23 @@ void app_main(void)
     
     xTaskCreate(uart_event_task, "uart_receive_task", 1024, NULL, 2, NULL);
     // xTaskCreate(textbox_dispay, "tbt", 2048, NULL, 1, NULL);
+//-----------------------------------------------------------------------------
+    const esp_timer_create_args_t keypad_poll_timer_args = {
+        .callback = &keypad_poll_callback,
+        .name = "keypad_poll",                    
+        };
+    err = esp_timer_create(&keypad_poll_timer_args, &keypad_poll_handler);
+    if (err != ESP_OK)
+    {
+        ESP_LOGE(TAG, "Failed to create confirmation timer: %s", esp_err_to_name(err));
+        return;
+    }
+    esp_timer_start_periodic(keypad_poll_handler, 555);
 
-
+//-----------------------------------------------------------------------------
     const esp_timer_create_args_t confirmation_timer_args = {
         .callback = &confirmation_timer_callback,
-        .name = "keypad_timer",                    
+        .name = "keypad_conf_timer",                    
         };
     err = esp_timer_create(&confirmation_timer_args, &confirmation_timer_handle);
     if (err != ESP_OK)
@@ -407,6 +513,7 @@ void app_main(void)
         return;
     }
 
+//-----------------------------------------------------------------------------
     const esp_timer_create_args_t display_delay_timer_args = {
         .callback = &display_delay_timer_callback,
         .name = "display_delay",

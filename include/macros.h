@@ -1,10 +1,15 @@
-#define INPUT_SIGNAL_PIN    13
+#define INPUT_SIGNAL_PIN    4
 #define LED_PIN             2
 #define COIL_OUTPUT_PIN     18
 #define COIL_VCC_PIN        5
 #define BUTTON_PIN          23
 #define CONFIG_SDA_GPIO     21
 #define CONFIG_SCL_GPIO     22
+#define CD4017_CLK        14
+#define CD4017_RST        12
+#define KEYPAD_C0         27
+#define KEYPAD_C1         26
+
 
 #define PERIOD              512
 #define PERIOD_LOW          387
