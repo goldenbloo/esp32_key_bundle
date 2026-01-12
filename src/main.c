@@ -23,6 +23,7 @@
 #include "littlefs_records.h"
 #include "u8g2.h"
 #include "u8g2_esp32_hal.h"
+#include "touch.h"
 
 
 #define ESP_INTR_FLAG_DEFAULT   0
@@ -46,38 +47,13 @@ SemaphoreHandle_t scanSem, scanDoneSem, rfidDoneSem, scrollDeleteSem, drawMutex;
 
 u8g2_t u8g2;
 
-uint64_t currentTag;
-uint8_t currentTagArray[5];
-QueueHandle_t uartQueue, uiEventQueue, modeSwitchQueue;
+QueueHandle_t uartQueue, uiEventQueue, modeSwitchQueue, printQueue;
 TaskHandle_t uiHandlerTask = NULL, rfidAutoTxHandler = NULL;
 esp_timer_handle_t confirmation_timer_handle, display_delay_timer_handle, keypad_poll_handler;
 ui_event_e display_delay_cb_arg;
 
-void rfid_deferred_task(void *arg)
-{
-    rfid_read_event_t evt;
-    // uint64_t last_tag = 0;
-    char str[70];    
-    for (;;)
-    {
-        if (xQueueReceive(inputIsrEvtQueue, &evt, portMAX_DELAY))
-        {    
-            {
-                ESP_LOGI(TAG, "Level: %d, Time: %lu, idx: %ld, buff: %s", evt.level, evt.ms, evt.idx, int_to_char_bin(str,evt.buf));
-                uint64_t long_tag = 0;
-                for (uint8_t i = 0; i < 5; i++)
-                    long_tag |= ((uint64_t)evt.tag[i] << (8 * i));
-                currentTag = long_tag;
-                memcpy(currentTagArray, evt.tag, sizeof(currentTagArray));
 
-                int32_t event = EVT_RFID_SCAN_DONE;
-                xQueueSendToBack(uiEventQueue, &event, pdMS_TO_TICKS(15));
-                rfid_disable_rx_tx_tag();
-                // xSemaphoreGive()
-            }
-        }
-    }
-}
+
 
 void button_interrupt_handler(void *arg)
 {
@@ -207,22 +183,65 @@ void gpio_pins_init()
         .pull_down_en = GPIO_PULLDOWN_DISABLE};
     ESP_ERROR_CHECK(gpio_config(&led_io));
 
-    // Keypad pin setup
-    gpio_config_t keypad_out = {
-        .mode = GPIO_MODE_OUTPUT,
-        .pin_bit_mask = (1ULL << CD4017_CLK) | (1ULL << CD4017_RST),
-        .pull_up_en = GPIO_PULLUP_DISABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type = GPIO_INTR_DISABLE,};
-    ESP_ERROR_CHECK(gpio_config(&keypad_out));
+    // // Keypad pin setup
+    // gpio_config_t keypad_out = {
+    //     .mode = GPIO_MODE_OUTPUT,
+    //     .pin_bit_mask = (1ULL << CD4017_CLK) | (1ULL << CD4017_RST),
+    //     .pull_up_en = GPIO_PULLUP_DISABLE,
+    //     .pull_down_en = GPIO_PULLDOWN_DISABLE,
+    //     .intr_type = GPIO_INTR_DISABLE,};
+    // ESP_ERROR_CHECK(gpio_config(&keypad_out));
 
-    gpio_config_t keypad_in = {
+    // gpio_config_t keypad_in = {
+    //     .mode = GPIO_MODE_INPUT,
+    //     .pin_bit_mask = (1ULL << KEYPAD_C0) | (1ULL << KEYPAD_C1),
+    //     .pull_up_en = GPIO_PULLUP_DISABLE,
+    //     .pull_down_en = GPIO_PULLDOWN_DISABLE,
+    //     .intr_type = GPIO_INTR_DISABLE,};
+    // ESP_ERROR_CHECK(gpio_config(&keypad_in));
+
+    // Touch memory pins
+    // Pullup pin
+    gpio_set_level(PULLUP_PIN, 0);
+    gpio_config_t touch_pullup_config = {
+        .mode = GPIO_MODE_OUTPUT,
+        .pin_bit_mask = (1ULL << PULLUP_PIN),
+        .pull_up_en = GPIO_PULLUP_ENABLE,      
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,};
+    ESP_ERROR_CHECK(gpio_config(&touch_pullup_config));
+
+    // Metakom transmit
+    gpio_set_level(METAKOM_TX, 0);
+    gpio_config_t matakom_tx_config = {
+        .mode = GPIO_MODE_OUTPUT,
+        .pin_bit_mask = (1ULL << METAKOM_TX),
+        .pull_up_en = GPIO_PULLUP_ENABLE,      
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,};
+    ESP_ERROR_CHECK(gpio_config(&matakom_tx_config));
+    
+    // One Wire transmit
+    gpio_set_level(OWI_TX, 0);
+    gpio_config_t owi_tx_config = {
+        .mode = GPIO_MODE_OUTPUT,
+        .pin_bit_mask = (1ULL << OWI_TX),
+        .pull_up_en = GPIO_PULLUP_ENABLE,      
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,};
+    ESP_ERROR_CHECK(gpio_config(&owi_tx_config));
+    
+    // Comparator output pin
+    gpio_config_t comp_rx_config = {
         .mode = GPIO_MODE_INPUT,
-        .pin_bit_mask = (1ULL << KEYPAD_C0) | (1ULL << KEYPAD_C1),
+        .pin_bit_mask = (1ULL << COMP_RX),
         .pull_up_en = GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .intr_type = GPIO_INTR_DISABLE,};
-    ESP_ERROR_CHECK(gpio_config(&keypad_in));
+    ESP_ERROR_CHECK(gpio_config(&comp_rx_config));
+    ESP_ERROR_CHECK(gpio_isr_handler_add(COMP_RX, comp_rx_isr_handler, (void *)COMP_RX));
+    gpio_set_intr_type(COMP_RX, GPIO_INTR_DISABLE);
+
 }
 
 
@@ -243,17 +262,6 @@ void uart_event_task(void *pvParameters)
                     if (uart_read_bytes(UART_NUM_0, msg, event.size, portMAX_DELAY) > -1)
                     {
                         int32_t key = -1;
-                        
-                        // if (key >= 0x30 && key <= 0x39)
-                        // {
-                        //     key -= 0x30;
-                        //     keypad_button_press(key, textBuffer, sizeof(textBuffer), &dev);
-                        // }
-                        // else if (key == 0x08)                       
-                        //     keypad_button_press(10, textBuffer, sizeof(textBuffer), &dev);                        
-                        // else if (key == '*')
-                        //     keypad_button_press(11, textBuffer, sizeof(textBuffer), &dev);
-
                         switch (msg[0])
                         {
                         case 'w': // UP
@@ -395,6 +403,64 @@ void keypad_poll_callback()
 }
 
 
+void print_deferred_task(void* args)
+{
+    touch_print_t evt;
+    // char* tag = "print";
+    char str[40];
+    for (;;)
+    {
+        if (xQueueReceive(printQueue, &evt, portMAX_DELAY))
+        {    
+            evt.tick /= 240;
+            switch (evt.evt)
+            {
+            case 0:
+                printf("Time: %lu\tSync Bit Found\n", evt.tick);
+                break;
+            
+            case 1:
+                printf("Time: %lu\tStart word OK\n", evt.tick);
+                break;
+            
+            case 2:
+                printf("Time: %lu\tStart word BAD\n", evt.tick);
+                break;
+                        
+            case 3:
+                            
+                printf("Time: %lu\tParity BAD\nbitCnt: %d\tdata: %s\n", evt.tick, evt.bitCnt, int32_to_char_bin(str, evt.data));
+                break;
+            
+            case 4:
+                printf("Start Metakom Read");
+                
+                break;
+            
+            case 5:
+                printf("timeAvg: %lu\n", evt.timeAvg);
+                break;
+
+            case 6:                                
+                printf("Time: %lu\tbitCnt: %d\tdata: %s\t dur: %lu\n", evt.tick, evt.bitCnt, int32_to_char_bin(str, evt.data), evt.duration);
+                break;
+
+            case 7:
+                printf("Time: %lu\tstartCnt: %d\tstartWord: %s\n", evt.tick, evt.bitCnt, int32_to_char_bin(str, evt.data));
+                break;
+
+            case 8:
+                printf("Metakom Data %lu, %s\n", evt.data, int32_to_char_bin(str, evt.data));
+                break;
+
+            default:
+                break;
+            }
+        }
+
+    }
+}
+
 
 
 void app_main(void)
@@ -411,8 +477,8 @@ void app_main(void)
 
 //-----------------------------------------------------------------------------
     // Create the queue. 
-    inputIsrEvtQueue = xQueueCreate(20, sizeof(rfid_read_event_t));
-    if (inputIsrEvtQueue == NULL)
+    rfidInputIsrEvtQueue = xQueueCreate(20, sizeof(rfid_read_event_t));
+    if (rfidInputIsrEvtQueue == NULL)
     {
         ESP_LOGE(TAG, "Failed to create event queue");
         return;
@@ -427,6 +493,18 @@ void app_main(void)
     if (modeSwitchQueue == NULL)
     {
         ESP_LOGE(TAG, "Failed to create key queue");
+        return;
+    }
+    touchInputIsrEvtQueue = xQueueCreate(10, sizeof(rfid_read_event_t));
+    if (touchInputIsrEvtQueue == NULL)
+    {
+        ESP_LOGE(TAG, "Failed to create event queue");
+        return;
+    }
+    printQueue = xQueueCreate(50, sizeof(touch_print_t));
+    if (printQueue == NULL)
+    {
+        ESP_LOGE(TAG, "Failed to create event queue");
         return;
     }
 
@@ -448,7 +526,9 @@ void app_main(void)
     ESP_ERROR_CHECK(rmt_new_copy_encoder(&copy_cfg, &copy_enc));
 //-----------------------------------------------------------------------------
     // Create a task to process the deferred events.
-    xTaskCreate(rfid_deferred_task, "rfid_deferred_task", 2048, NULL, 4, NULL);    
+    xTaskCreate(rfid_deferred_task, "rfid_deferred_task", 2048, NULL, 4, NULL);
+    xTaskCreate(touch_memory_deferred_task, "touch_memory_deferred_task", 2048, NULL, 4, NULL);
+    xTaskCreate(print_deferred_task, "print_deferred_task", 2048, NULL, 3, NULL);      
 //-----------------------------------------------------------------------------
     // Create semaphores
     // modeSwitchSem = xSemaphoreCreateBinary();
@@ -466,10 +546,6 @@ void app_main(void)
 
 
     // Create the worker task
-    // xTaskCreate(mode_switch_task, "mode_switch", 2048, 0, 0, NULL);
-    // xTaskCreate(scan_wifi_and_tag, "scan_wifi_&_tag", 4096, 0, 1, NULL);
-    // ESP_ERROR_CHECK(rmt_disable(tx_chan));
-    // xSemaphoreGive(modeSwitchSem);
 //-----------------------------------------------------------------------------
     //LittleFS
     littlefs_init();
@@ -489,17 +565,17 @@ void app_main(void)
     xTaskCreate(uart_event_task, "uart_receive_task", 1024, NULL, 2, NULL);
     // xTaskCreate(textbox_dispay, "tbt", 2048, NULL, 1, NULL);
 //-----------------------------------------------------------------------------
-    const esp_timer_create_args_t keypad_poll_timer_args = {
-        .callback = &keypad_poll_callback,
-        .name = "keypad_poll",                    
-        };
-    err = esp_timer_create(&keypad_poll_timer_args, &keypad_poll_handler);
-    if (err != ESP_OK)
-    {
-        ESP_LOGE(TAG, "Failed to create confirmation timer: %s", esp_err_to_name(err));
-        return;
-    }
-    esp_timer_start_periodic(keypad_poll_handler, 555);
+    // const esp_timer_create_args_t keypad_poll_timer_args = {
+    //     .callback = &keypad_poll_callback,
+    //     .name = "keypad_poll",                    
+    //     };
+    // err = esp_timer_create(&keypad_poll_timer_args, &keypad_poll_handler);
+    // if (err != ESP_OK)
+    // {
+    //     ESP_LOGE(TAG, "Failed to create confirmation timer: %s", esp_err_to_name(err));
+    //     return;
+    // }
+    // esp_timer_start_periodic(keypad_poll_handler, 555);
 
 //-----------------------------------------------------------------------------
     const esp_timer_create_args_t confirmation_timer_args = {

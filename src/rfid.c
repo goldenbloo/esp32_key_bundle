@@ -5,9 +5,39 @@
 #include "driver/gpio.h"
 #include "driver/rmt_tx.h"
 #include "esp_log.h"
+#include "string.h"
 #include "macros.h"
+#include "menus.h"
 
-QueueHandle_t inputIsrEvtQueue = NULL;
+QueueHandle_t rfidInputIsrEvtQueue = NULL;
+
+uint64_t currentTag;
+uint8_t currentTagArray[5];
+void rfid_deferred_task(void *arg)
+{
+    rfid_read_event_t evt;
+    // uint64_t last_tag = 0;
+    char str[70];    
+    for (;;)
+    {
+        if (xQueueReceive(rfidInputIsrEvtQueue, &evt, portMAX_DELAY))
+        {    
+            {
+                ESP_LOGI("ISR_offload", "Level: %d, Time: %lu, idx: %ld, buff: %s", evt.level, evt.ms, evt.idx, int64_to_char_bin(str,evt.buf));
+                uint64_t long_tag = 0;
+                for (uint8_t i = 0; i < 5; i++)
+                    long_tag |= ((uint64_t)evt.tag[i] << (8 * i));
+                currentTag = long_tag;
+                memcpy(currentTagArray, evt.tag, sizeof(currentTagArray));
+
+                int32_t event = EVT_RFID_SCAN_DONE;
+                xQueueSendToBack(uiEventQueue, &event, pdMS_TO_TICKS(15));
+                rfid_disable_rx_tx_tag();
+                // xSemaphoreGive()
+            }
+        }
+    }
+}
 
 void inline syncErrorFunc(manchester_t *m)
 {
@@ -169,7 +199,7 @@ void IRAM_ATTR rfid_read_isr_handler(void *arg)
                 // ESP_LOGI(TAG, "tag:\t %#lx", tagId);
                 gpio_intr_enable(INPUT_SIGNAL_PIN);
                 BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-                xQueueSendToBackFromISR(inputIsrEvtQueue, &evt, &xHigherPriorityTaskWoken);
+                xQueueSendToBackFromISR(rfidInputIsrEvtQueue, &evt, &xHigherPriorityTaskWoken);
                 if (xHigherPriorityTaskWoken)
                 {
                     portYIELD_FROM_ISR();
@@ -194,13 +224,23 @@ void IRAM_ATTR rfid_read_isr_handler(void *arg)
     gpio_intr_enable(INPUT_SIGNAL_PIN);
 }
 
-char *int_to_char_bin(char *str, uint64_t num)
+char *int64_to_char_bin(char *str, uint64_t num) // Minumal char buffer size is 65
 {
     for (uint8_t i = 0; i < 64; i++)
     {
         str[63 - i] = ((num >> i) & 1) + 0x30;
     }
     str[64] = 0;
+    return str;
+}
+
+char *int32_to_char_bin(char *str, uint32_t num) // Minumal char buffer size is 33
+{
+    for (uint8_t i = 0; i < 32; i++)
+    {
+        str[31 - i] = ((num >> i) & 1) + 0x30;
+    }
+    str[32] = 0;
     return str;
 }
 

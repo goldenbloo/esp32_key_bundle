@@ -4,7 +4,7 @@
 #include "driver/rmt_tx.h"
 #include "macros.h"
 
-extern QueueHandle_t inputIsrEvtQueue;
+extern QueueHandle_t rfidInputIsrEvtQueue;
 
 typedef struct {
     bool level;
@@ -32,7 +32,8 @@ typedef struct
  *   - AND clear the flag afterward.
  */
 
-char* int_to_char_bin(char* str, uint64_t num);
+char* int64_to_char_bin(char* str, uint64_t num);
+char *int32_to_char_bin(char *str, uint32_t num);
 void rfid_read_isr_handler(void *arg);
 uint64_t rfid_arr_tag_to_raw_tag(uint8_t *tagArr);
 // void rfid_raw_tag_to_rmt(rmt_symbol_word_t *rmtArr, uint64_t rawTag);
@@ -42,10 +43,12 @@ void rfid_disable_rx_tx_tag();
 void rfid_tag_to_array(uint64_t tag, uint8_t tagArr[]);
 uint64_t rfid_array_to_tag(uint8_t tagArr[]);
 
+void rfid_deferred_task(void *arg);
 
 extern rmt_channel_handle_t tx_chan;
 extern rmt_encoder_handle_t copy_enc;
 extern rmt_transmit_config_t trans_config;
 extern rmt_symbol_word_t pulse_pattern[RMT_SIZE];
+extern QueueHandle_t uiEventQueue;
 
 #endif
