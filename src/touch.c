@@ -10,6 +10,7 @@
 #define MAX_SKIP 2000
 
 QueueHandle_t touchInputIsrEvtQueue = NULL;
+TaskHandle_t kt2ReadTaskHandler = NULL;
 
 
 bool timeAvgCalculated = false, syncBitFound = false, startOk = false;
@@ -41,19 +42,18 @@ void read_metakom_kt2()
 {
     uint8_t printEvt = 4;
     xQueueSend(printQueue, &printEvt, 0);
-    timeHigh = 0;
-    timeLow = 0;
-    timeAvg = 0;
-    sumCnt = 0;
-    timeSum = 0;
+    timeHigh = timeLow = timeAvg = sumCnt = timeSum = 0;
     syncBitFound = false;
     timeAvgCalculated = false;
     lastTime = esp_cpu_get_cycle_count();
     skipCnt = 0;
+    
+    if (kt2ReadTaskHandler == NULL)
+        xTaskCreate(kt2_read_deferred_task, "kt2_read_deferred_task", 2048, NULL, 4, &kt2ReadTaskHandler);
     gpio_set_intr_type(COMP_RX, GPIO_INTR_ANYEDGE);
 }
 
-void touch_memory_deferred_task(void* args)
+void kt2_read_deferred_task(void* args)
 {
     touch_input_evt evt;
     for (;;)
@@ -184,13 +184,15 @@ void touch_memory_deferred_task(void* args)
                     }
                     else if (bitCnt == 32)
                     {
-                        // touch_print_t printEvt ={
-                        //         .evt = 8,
-                        //         .tick = lastTime,
-                        //         .bitCnt = bitCnt,
-                        //         .data = data,};
-                        // xQueueSend(printQueue, &printEvt, 0);                        
+                        touch_print_t printEvt ={
+                                .evt = 8,
+                                .tick = lastTime,
+                                .bitCnt = bitCnt,
+                                .data = data,};
+                        xQueueSend(printQueue, &printEvt, 0);                        
                         gpio_set_intr_type(COMP_RX, GPIO_INTR_DISABLE);
+                        kt2ReadTaskHandler = NULL;
+                        vTaskDelete(NULL);
                     }
                 }                
                 continue;

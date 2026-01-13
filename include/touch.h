@@ -22,7 +22,7 @@ typedef struct
 
 void read_metakom_kt2();
 void  comp_rx_isr_handler(void *arg);
-void touch_memory_deferred_task(void* args);
+void kt2_read_deferred_task(void* args);
 
 
 

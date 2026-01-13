@@ -9,6 +9,7 @@
 #include "menus.h"
 #include "littlefs_records.h"
 #include "touch.h"
+#include "owi.h"
 
 
 char *mainMenuEntries[] = {
@@ -18,6 +19,7 @@ char *mainMenuEntries[] = {
     "Search location",                  // 3
     "Delete all tags i mean ALL TAGS",  // 4
     "Read Metakom",                     // 5
+    "Read DS18B20",                     // 6
 };
 menu_listbox_t mainMenuListBox = {
     .list = mainMenuEntries,
@@ -71,6 +73,10 @@ menu_t *main_menu_handle(int32_t event)
         
         case 5:
             read_metakom_kt2();
+            break;
+        
+            case 6:
+            read_ds18b20();
             break;
 
         default:

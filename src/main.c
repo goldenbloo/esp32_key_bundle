@@ -526,8 +526,7 @@ void app_main(void)
     ESP_ERROR_CHECK(rmt_new_copy_encoder(&copy_cfg, &copy_enc));
 //-----------------------------------------------------------------------------
     // Create a task to process the deferred events.
-    xTaskCreate(rfid_deferred_task, "rfid_deferred_task", 2048, NULL, 4, NULL);
-    xTaskCreate(touch_memory_deferred_task, "touch_memory_deferred_task", 2048, NULL, 4, NULL);
+    xTaskCreate(rfid_deferred_task, "rfid_deferred_task", 2048, NULL, 4, NULL);    
     xTaskCreate(print_deferred_task, "print_deferred_task", 2048, NULL, 3, NULL);      
 //-----------------------------------------------------------------------------
     // Create semaphores
