@@ -35,23 +35,26 @@
 static const char *TAG = "ISR_offload";
 esp_err_t err;
 
-rmt_channel_handle_t tx_chan = NULL;
+rmt_channel_handle_t rfid_tx_ch = NULL, touch_tx_ch = NULL;
 rmt_encoder_handle_t copy_enc;
-rmt_transmit_config_t trans_config  = {
+rmt_transmit_config_t rfid_tx_config  = {
         .loop_count = -1,
-        .flags.eot_level = false,
+        .flags.eot_level = 0,
         .flags.queue_nonblocking = true,
-    };
+    };    
+rmt_transmit_config_t touch_tx_config = {
+    .loop_count = -1,
+    .flags.queue_nonblocking = true,
+    .flags.eot_level = 1, // Inverted 
+};
 rmt_symbol_word_t pulse_pattern[RMT_SIZE];
 SemaphoreHandle_t scanSem, scanDoneSem, rfidDoneSem, scrollDeleteSem, drawMutex;
-
 u8g2_t u8g2;
 
 QueueHandle_t uartQueue, uiEventQueue, modeSwitchQueue, printQueue;
 TaskHandle_t uiHandlerTask = NULL, rfidAutoTxHandler = NULL;
 esp_timer_handle_t confirmation_timer_handle, display_delay_timer_handle, keypad_poll_handler;
 ui_event_e display_delay_cb_arg;
-
 
 
 
@@ -202,7 +205,7 @@ void gpio_pins_init()
 
     // Touch memory pins
     // Pullup pin
-    gpio_set_level(PULLUP_PIN, 0);
+    gpio_set_level(PULLUP_PIN, 0); // NPN pullup enabled
     gpio_config_t touch_pullup_config = {
         .mode = GPIO_MODE_OUTPUT,
         .pin_bit_mask = (1ULL << PULLUP_PIN),
@@ -511,19 +514,38 @@ void app_main(void)
 //-----------------------------------------------------------------------------
     gpio_pins_init();
 //-----------------------------------------------------------------------------
-//RMT TX tag transmit
-    rmt_tx_channel_config_t tx_chan_config = {
+//RMT TX RFID Transmit
+    rmt_tx_channel_config_t rfid_tx_ch_config = {
         .gpio_num = COIL_OUTPUT_PIN,
         .clk_src = RMT_CLK_SRC_DEFAULT,
         .resolution_hz = 1000000, // 1 MHz resolution
         .mem_block_symbols = 64,
         .trans_queue_depth = 4,
         .flags.invert_out = false,
-    };
-    
-    ESP_ERROR_CHECK(rmt_new_tx_channel(&tx_chan_config, &tx_chan));
+    };    
+    ESP_ERROR_CHECK(rmt_new_tx_channel(&rfid_tx_ch_config, &rfid_tx_ch));
     rmt_copy_encoder_config_t copy_cfg = {};    
     ESP_ERROR_CHECK(rmt_new_copy_encoder(&copy_cfg, &copy_enc));
+//RMT TX Touch Memory
+    rmt_tx_channel_config_t touch_tx_ch_config = {
+        .gpio_num = METAKOM_TX,
+        .clk_src = RMT_CLK_SRC_DEFAULT,
+        .resolution_hz = 1000000, // 1 MHz resolution
+        .mem_block_symbols = 64,
+        .trans_queue_depth = 4,
+        .flags.invert_out = true,
+        
+    };    
+    ESP_ERROR_CHECK(rmt_new_tx_channel(&touch_tx_ch_config, &touch_tx_ch));        
+    ESP_ERROR_CHECK(rmt_new_copy_encoder(&copy_cfg, &copy_enc));    
+    // Enable and disable to set pin low
+    err = rmt_enable(touch_tx_ch);
+    if (err != ESP_ERR_INVALID_STATE && err != ESP_OK)
+        ESP_LOGE(TAG, "Error occurred: %s (0x%x)", esp_err_to_name(err), err);
+    esp_err_t err = rmt_disable(touch_tx_ch);
+    if (err != ESP_ERR_INVALID_STATE && err != ESP_OK)
+        ESP_LOGE(TAG, "Error occurred: %s (0x%x)", esp_err_to_name(err), err);
+
 //-----------------------------------------------------------------------------
     // Create a task to process the deferred events.
     xTaskCreate(rfid_deferred_task, "rfid_deferred_task", 2048, NULL, 4, NULL);    

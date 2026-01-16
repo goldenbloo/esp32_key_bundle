@@ -68,7 +68,6 @@ uint8_t owi_read_byte()
     return data;
 }
 
-
 // State variables for the search
 static uint8_t currentROM[8];
 static int last_discrepancy;
@@ -227,3 +226,6 @@ void read_ds18b20()
     }  
 
 }
+
+
+

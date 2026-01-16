@@ -153,9 +153,9 @@ extern QueueHandle_t uiEventQueue, modeSwitchQueue;
 extern SemaphoreHandle_t scanSem, scanDoneSem, rfidDoneSem, scrollDeleteSem, drawMutex;
 extern uint64_t currentTag;
 extern uint8_t currentTagArray[5];
-extern rmt_channel_handle_t tx_chan;
+extern rmt_channel_handle_t rfid_tx_ch;
 extern rmt_encoder_handle_t copy_enc;
-extern rmt_transmit_config_t trans_config;
+extern rmt_transmit_config_t rfid_tx_config;
 extern rmt_symbol_word_t pulse_pattern[RMT_SIZE];
 extern TaskHandle_t uiHandlerTask, rfidAutoTxHandler;
 

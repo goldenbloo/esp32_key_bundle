@@ -3,6 +3,9 @@
 #include "freertos/FreeRTOS.h"
 
 extern QueueHandle_t touchInputIsrEvtQueue, printQueue;
+extern rmt_channel_handle_t touch_tx_ch;
+extern rmt_encoder_handle_t copy_enc;
+extern rmt_transmit_config_t touch_tx_config;
 
 typedef struct {
     bool level;    
@@ -21,8 +24,9 @@ typedef struct
 
 
 void read_metakom_kt2();
-void  comp_rx_isr_handler(void *arg);
+void comp_rx_isr_handler(void *arg);
 void kt2_read_deferred_task(void* args);
+void transmit_metakom_k2();
 
 
 

@@ -2,6 +2,8 @@
 #include "freertos/task.h"
 #include "driver/gpio.h"
 #include "esp_timer.h"
+#include "driver/rmt_tx.h"
+#include "esp_log.h"
 #include "macros.h"
 #include "rfid.h"
 #include "touch.h"
@@ -9,17 +11,17 @@
 #define MAX_SUM  1000
 #define MAX_SKIP 2000
 
+
 QueueHandle_t touchInputIsrEvtQueue = NULL;
 TaskHandle_t kt2ReadTaskHandler = NULL;
 
 
-bool timeAvgCalculated = false, syncBitFound = false, startOk = false;
-bool waitForStabilization = true;
-uint32_t lastTime = 0;
-volatile uint32_t lastIsrTime = 0;
-uint32_t sumCnt = 0, timeHigh = 0, timeLow = 0, timeAvg = 0, timeSum = 0, skipCnt = 0;
-uint8_t bitCnt = 0, startWordCnt = 0, startWord = 0, parity = 0;
-uint32_t data;
+static bool timeAvgCalculated = false, syncBitFound = false, startOk = false;
+static volatile uint32_t lastIsrTime = 0, lastTime = 0;
+static uint32_t sumCnt = 0, timeHigh = 0, timeLow = 0, timeAvg = 0, timeSum = 0, skipCnt = 0;
+static uint8_t bitCnt = 0, startWordCnt = 0, startWord = 0, parity = 0;
+uint32_t keyId;
+
 
 void IRAM_ATTR comp_rx_isr_handler(void *arg)
 {
@@ -40,13 +42,22 @@ void IRAM_ATTR comp_rx_isr_handler(void *arg)
 
 void read_metakom_kt2()
 {
+    const char* TAG = "tx_meta";
+
     uint8_t printEvt = 4;
     xQueueSend(printQueue, &printEvt, 0);
+
     timeHigh = timeLow = timeAvg = sumCnt = timeSum = 0;
     syncBitFound = false;
     timeAvgCalculated = false;
     lastTime = esp_cpu_get_cycle_count();
     skipCnt = 0;
+
+    gpio_set_level(PULLUP_PIN, 0); // Enable pullup
+    gpio_set_level(METAKOM_TX, 0);
+    esp_err_t err = rmt_disable(touch_tx_ch);
+    if (err != ESP_ERR_INVALID_STATE && err != ESP_OK)
+        ESP_LOGE(TAG, "Error occurred: %s (0x%x)", esp_err_to_name(err), err);
     
     if (kt2ReadTaskHandler == NULL)
         xTaskCreate(kt2_read_deferred_task, "kt2_read_deferred_task", 2048, NULL, 4, &kt2ReadTaskHandler);
@@ -84,11 +95,6 @@ void kt2_read_deferred_task(void* args)
             {
                 timeAvg = timeSum / sumCnt; // Calculate half period
                 timeAvgCalculated = true;
-                // touch_print_t printEvt = {
-                //         .evt = 5,
-                //         .timeAvg = timeAvg,};
-                    // xQueueSend(printQueue, &printEvt, 0);
-                // printf("timeAvg = %lu\n", timeAvg);
             }
             else // Average is calculated
             {
@@ -99,15 +105,11 @@ void kt2_read_deferred_task(void* args)
 
                 if ((timeHigh > ((timeAvg * 1638) >> 10)) && (timeHigh < (timeAvg * 5)) && !syncBitFound) // Sync bit detection (timeHigh > (timeAvg * 1.6))
                 {
-                    // touch_print_t printEvt = {
-                    //     .evt = 0,
-                    //     .tick = lastTime,};
-                    // xQueueSend(printQueue, &printEvt, 0);
                     syncBitFound = true;
                     bitCnt = 0;
                     startWordCnt = 0;
                     startWord = 0;
-                    data = 0;
+                    keyId = 0;
                     parity = 0;
                     startOk = false;                   
                     continue;
@@ -120,61 +122,28 @@ void kt2_read_deferred_task(void* args)
                     if (!startOk) // Find and check start word
                     {
                         startWord = startWord | (bit << startWordCnt);
-                        // touch_print_t printEvt ={
-                        //         .evt = 7,
-                        //         .tick = lastTime,
-                        //         .data = startWord,
-                        //         .bitCnt = startWordCnt,};
-                        // xQueueSend(printQueue, &printEvt, 0);
                         startWordCnt++;
 
                         if (startWordCnt == 3) // Start word found
                         {
-                            if (startWord == 0b010)
-                            {
-                                startOk = true;
-                                // touch_print_t printEvt ={
-                                //         .evt = 1,
-                                //         .tick = lastTime,};
-                                // xQueueSend(printQueue, &printEvt, 0);
-                                // printf("Start word OK\n");
-                            }
+                            if (startWord == 0b010)                            
+                                startOk = true;                            
                             else // Reset on faliure
                             {
                                 startWordCnt = 0;
                                 startWord = 0;
                                 syncBitFound = false;
                                 bitCnt = 0;
-                                // touch_print_t printEvt ={
-                                //         .evt = 2,
-                                //         .tick = lastTime,};
-                                // xQueueSend(printQueue, &printEvt, 0);
-                                // printf("Start word BAD\n");
                             }
                         }
                         
                     }
                     else if (bitCnt < 32) // Start word ok
                     {
-                        data = data | (bit << bitCnt);
-                        // touch_print_t printEvt ={
-                        //         .evt = 6,
-                        //         .tick = lastTime,
-                        //         .bitCnt = bitCnt,
-                        //         .data = data,
-                        //         .duration = duration,};
-                        //     xQueueSend(printQueue, &printEvt, 0);
-                        
+                        keyId = keyId | (bit << bitCnt);                        
                         parity = parity ^ bit; // Calculate parity
                         if ((bitCnt & 7) == 7 && parity != 0)
                         {
-                            // touch_print_t printEvt ={
-                            //     .evt = 3,
-                            //     .tick = lastTime,
-                            //     .bitCnt = bitCnt,
-                            //     .data = data,};
-                            // xQueueSend(printQueue, &printEvt, 0);
-                            // printf("Parity BAD\n");
                             bitCnt = 0;
                             syncBitFound = false;
                             parity = 0;
@@ -188,15 +157,48 @@ void kt2_read_deferred_task(void* args)
                                 .evt = 8,
                                 .tick = lastTime,
                                 .bitCnt = bitCnt,
-                                .data = data,};
+                                .data = keyId,};
                         xQueueSend(printQueue, &printEvt, 0);                        
                         gpio_set_intr_type(COMP_RX, GPIO_INTR_DISABLE);
                         kt2ReadTaskHandler = NULL;
                         vTaskDelete(NULL);
                     }
-                }                
-                continue;
+                }    
             }
         }
     }
+}
+
+void transmit_metakom_k2()
+{
+    const char* TAG = "tx_meta";
+    esp_err_t err = rmt_disable(touch_tx_ch);
+    if (err != ESP_ERR_INVALID_STATE && err != ESP_OK)
+        ESP_LOGE(TAG, "Error occurred: %s (0x%x)", esp_err_to_name(err), err);
+    err = rmt_enable(touch_tx_ch);
+    if (err != ESP_ERR_INVALID_STATE && err != ESP_OK)
+        ESP_LOGE(TAG, "Error occurred: %s (0x%x)", esp_err_to_name(err), err);
+
+    static rmt_symbol_word_t pattern[36];
+    uint32_t halfPeriod = 100;
+    uint8_t startWord = 2;
+    uint32_t data = keyId;
+    rmt_symbol_word_t bit_0 = {{halfPeriod * 0.8, 0, halfPeriod * 1.2, 1}};
+    rmt_symbol_word_t bit_1 = {{halfPeriod * 1.2, 0, halfPeriod * 0.8, 1}};
+
+    pattern[0] = (rmt_symbol_word_t){{halfPeriod, 1, halfPeriod, 1}}; // Sync bit and start word
+    for (uint8_t i = 1; i < 4; i++)
+    {
+        pattern[i] = startWord & 1 ? bit_1 : bit_0;
+        startWord >>= 1;
+    }
+
+    for (uint8_t i = 4; i < 36; i++)
+    {
+        pattern[i] = data & 1 ? bit_1 : bit_0;
+        data >>= 1;
+    }
+
+    ESP_ERROR_CHECK(rmt_transmit(touch_tx_ch, copy_enc, pattern, sizeof(pattern), &touch_tx_config));
+    
 }

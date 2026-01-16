@@ -19,7 +19,7 @@ char *mainMenuEntries[] = {
     "Search location",                  // 3
     "Delete all tags i mean ALL TAGS",  // 4
     "Read Metakom",                     // 5
-    "Read DS18B20",                     // 6
+    "Trasnmit Metakom",                 // 6
 };
 menu_listbox_t mainMenuListBox = {
     .list = mainMenuEntries,
@@ -76,7 +76,8 @@ menu_t *main_menu_handle(int32_t event)
             break;
         
             case 6:
-            read_ds18b20();
+            // read_ds18b20();
+            transmit_metakom_k2();
             break;
 
         default:

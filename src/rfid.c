@@ -146,15 +146,6 @@ void IRAM_ATTR rfid_read_isr_handler(void *arg)
         m.bitIsReady = false;
         m.tagInputBuff = (m.tagInputBuff << 1) | m.currentBit; // Shift to left and add current bit if bit is ready
         evt.buf = m.tagInputBuff;
-        // readCount++;
-        // if (readCount > 64)
-        // {
-        //     // uint32_t tagId;
-        //     readCount = 0;
-        //     // for (uint8_t i = 6; i < 55; i += 5)
-        //     //     tagId = (tagId << 4) | ((m.tagInputBuff >> i) & 0x0F);
-        //     ESP_LOGI(TAG, "buff__: %#llx", m.tagInputBuff);
-        // }
 
         if ((m.tagInputBuff & 0xFF80000000000000) == 0xFF80000000000000) // Check if fist 9 bits are all 1
         {
@@ -194,16 +185,12 @@ void IRAM_ATTR rfid_read_isr_handler(void *arg)
                 }
                 for (uint8_t byte = 0; byte < 5; byte++)                
                     evt.tag[byte] = (nibbles[2 * byte + 1] << 4) | (nibbles[2 * byte]);
-                m.tagInputBuff = 0;                
-                // evt.tag[i / 2] |= ((m.tagInputBuff >> ((i + 1) * 5 + 1) ) & 0x0F) << (i % 2);
-                // ESP_LOGI(TAG, "tag:\t %#lx", tagId);
+                m.tagInputBuff = 0;    
                 gpio_intr_enable(INPUT_SIGNAL_PIN);
                 BaseType_t xHigherPriorityTaskWoken = pdFALSE;
                 xQueueSendToBackFromISR(rfidInputIsrEvtQueue, &evt, &xHigherPriorityTaskWoken);
-                if (xHigherPriorityTaskWoken)
-                {
-                    portYIELD_FROM_ISR();
-                }
+                if (xHigherPriorityTaskWoken)                
+                    portYIELD_FROM_ISR();                
             }
             else 
             {
@@ -303,11 +290,11 @@ void rfid_enable_rx_tag()
 {
    
     const char* TAG = "enable read tag";
-    esp_err_t err = rmt_disable(tx_chan);
+    esp_err_t err = rmt_disable(rfid_tx_ch);
     if (err != ESP_ERR_INVALID_STATE && err != ESP_OK)
         ESP_LOGE(TAG, "Error occurred: %s (0x%x)", esp_err_to_name(err), err);
     // Set rmt symbol array to transmit 125 khz signal
-    ESP_ERROR_CHECK(rmt_enable(tx_chan));
+    ESP_ERROR_CHECK(rmt_enable(rfid_tx_ch));
     for (uint8_t i = 0; i < 64; i++)
     {
         pulse_pattern[i].duration0 = 4;
@@ -316,7 +303,7 @@ void rfid_enable_rx_tag()
         pulse_pattern[i].level1 = 0;
     }
     // Start RMT TX with 125 khz signal
-    ESP_ERROR_CHECK(rmt_transmit(tx_chan, copy_enc, pulse_pattern, sizeof(pulse_pattern), &trans_config));
+    ESP_ERROR_CHECK(rmt_transmit(rfid_tx_ch, copy_enc, pulse_pattern, sizeof(pulse_pattern), &rfid_tx_config));
     // ESP_LOGI(TAG, "rmt tx carrier");
     // Enable coil VCC
     gpio_set_level(COIL_VCC_PIN, 1);
@@ -332,16 +319,16 @@ void rfid_enable_tx_raw_tag(uint64_t rawTag)
     ESP_ERROR_CHECK(gpio_intr_disable(INPUT_SIGNAL_PIN));
     // Disable coil VCC
     gpio_set_level(COIL_VCC_PIN, 0);
-    // ESP_ERROR_CHECK(rmt_tx_wait_all_done(tx_chan, portMAX_DELAY));
+    // ESP_ERROR_CHECK(rmt_tx_wait_all_done(rfid_tx_ch, portMAX_DELAY));
     // Trying to disable RMT
-    esp_err_t err = rmt_disable(tx_chan);
+    esp_err_t err = rmt_disable(rfid_tx_ch);
     // Set raw tag into rmt symbol array
     rfid_raw_tag_to_rmt(pulse_pattern, rawTag);
     // Start RMT TX
     if (err != ESP_ERR_INVALID_STATE && err != ESP_OK)
         ESP_LOGE(TAG, "Error occurred: %s (0x%x)", esp_err_to_name(err), err);
-    ESP_ERROR_CHECK(rmt_enable(tx_chan));
-    ESP_ERROR_CHECK(rmt_transmit(tx_chan, copy_enc, pulse_pattern, sizeof(pulse_pattern), &trans_config));
+    ESP_ERROR_CHECK(rmt_enable(rfid_tx_ch));
+    ESP_ERROR_CHECK(rmt_transmit(rfid_tx_ch, copy_enc, pulse_pattern, sizeof(pulse_pattern), &rfid_tx_config));
     // ESP_LOGI(TAG, "rmt tx tag");
     gpio_set_level(LED_PIN, 1);
 }
@@ -351,6 +338,6 @@ void rfid_disable_rx_tx_tag()
     // const char* TAG = "diasable tx tag";
     ESP_ERROR_CHECK(gpio_intr_disable(INPUT_SIGNAL_PIN));
     gpio_set_level(COIL_VCC_PIN, 0);
-    rmt_disable(tx_chan);
+    rmt_disable(rfid_tx_ch);
     gpio_set_level(LED_PIN, 0);
 }

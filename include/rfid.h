@@ -45,9 +45,9 @@ uint64_t rfid_array_to_tag(uint8_t tagArr[]);
 
 void rfid_deferred_task(void *arg);
 
-extern rmt_channel_handle_t tx_chan;
+extern rmt_channel_handle_t rfid_tx_ch;
 extern rmt_encoder_handle_t copy_enc;
-extern rmt_transmit_config_t trans_config;
+extern rmt_transmit_config_t rfid_tx_config;
 extern rmt_symbol_word_t pulse_pattern[RMT_SIZE];
 extern QueueHandle_t uiEventQueue;
 
