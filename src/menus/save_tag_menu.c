@@ -41,9 +41,9 @@ void save_tag_menu_enter()
     saveTagMenu.selectedOption = NOT_SELECTED;
 }
 
-menu_t* save_tag_menu_handle(int32_t event)
+menu_t* save_tag_menu_handle(ui_event_e event)
 {
-    if (saveTagMenu.status == EVT_ON_ENTRY) saveTagMenu.status = 0;
+    if (saveTagMenu.status == EVT_ON_ENTRY) saveTagMenu.status = EVT_NONE;
 
     if (saveTagMenu.status != EVT_SAVE_SUCCESS && saveTagMenu.status != EVT_SAVE_FAIL)
     switch (event)
@@ -54,12 +54,12 @@ menu_t* save_tag_menu_handle(int32_t event)
 
     case KEY_LEFT:
         saveTagMenu.selectedOption = SAVE_OPTION;
-        saveTagMenu.status = 0;
+        saveTagMenu.status = EVT_NONE;
         break;
 
     case KEY_RIGHT:
         saveTagMenu.selectedOption = CANCEL_OPTION;
-        saveTagMenu.status = 0;
+        saveTagMenu.status = EVT_NONE;
         break;
 
     case KEY_ENTER:

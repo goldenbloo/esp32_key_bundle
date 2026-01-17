@@ -37,10 +37,10 @@ void scan_wifi_menu_enter()
     scanWifiMenu.status = EVT_ON_ENTRY;    
 }
 
-menu_t* scan_wifi_menu_handle(int32_t event)
+menu_t* scan_wifi_menu_handle(ui_event_e event)
 {
     const char *TAG = "wifi_handle";
-    if (scanWifiMenu.status == EVT_ON_ENTRY) scanWifiMenu.status = 0;
+    if (scanWifiMenu.status == EVT_ON_ENTRY) scanWifiMenu.status = EVT_NONE;
     switch (event)
     {
     case EVT_WIFI_SCAN_DONE:

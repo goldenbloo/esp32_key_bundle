@@ -27,10 +27,10 @@ void scan_tag_menu_enter()
     rfid_enable_rx_tag();
 }
 
-menu_t *scan_tag_menu_handle(int32_t event)
+menu_t *scan_tag_menu_handle(ui_event_e event)
 {
     if (scanTagMenu.status == EVT_ON_ENTRY)
-        scanTagMenu.status = 0;
+        scanTagMenu.status = EVT_NONE;
     const char *TAG = "scan_tag_handle";
     switch (event)
     {

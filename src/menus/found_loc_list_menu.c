@@ -42,10 +42,10 @@ void found_loc_list_menu_enter()
 
 }
 
-menu_t *found_loc_list_menu_handle(int32_t event)
+menu_t *found_loc_list_menu_handle(ui_event_e event)
 {
      if (foundLocListMenu.status == EVT_ON_ENTRY)
-         foundLocListMenu.status = 0;
+         foundLocListMenu.status = EVT_NONE;
 
      
      if (event == KEY_ENTER)

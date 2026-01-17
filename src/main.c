@@ -264,38 +264,21 @@ void uart_event_task(void *pvParameters)
                 case UART_DATA:
                     if (uart_read_bytes(UART_NUM_0, msg, event.size, portMAX_DELAY) > -1)
                     {
-                        int32_t key = -1;
+                        ui_event_e key = -1;
                         switch (msg[0])
                         {
-                        case 'w': // UP
-                            key = KEY_UP;
-                            break;
-                        case 's': // DOWN
-                            key = KEY_DOWN;
-                            break;
-                        case 'a': // LEFT
-                            key = KEY_LEFT;
-                            break;
-                        case 'd': // RIGHT
-                            key = KEY_RIGHT;
-                            break;
-                        case 0xD: // RIGHT
-                            key = KEY_ENTER;
-                            break;
-                        case 0x8: //BACK
-                            key = KEY_BACK;
-                            break;
-
-                        case 'c': //Delete key
-                            key = KEY_CLEAR_CHAR;
-                            break;
-                        case 'z': //Shift key
-                            key = KEY_SHIFT;
-                            break;
+                        case 'w': key = KEY_UP;     break;
+                        case 's': key = KEY_DOWN;   break;
+                        case 'a': key = KEY_LEFT;   break;
+                        case 'd':key = KEY_RIGHT;   break;
+                        case 0xD: key = KEY_ENTER;  break;
+                        case 0x8:key = KEY_BACK;    break;
+                        case 'c': key = KEY_CLEAR_CHAR;break;
+                        case 'z': key = KEY_SHIFT; break;
 
                         default:
                             if (msg[0] >= 0x30 && msg[0] <= 0x39)                            
-                                key = msg[0] - 0x30;                            
+                                key =  (ui_event_e)(KEY_0 + (msg[0] - '0'));                            
                             break;                            
                         }
                         // if (key >= 0)

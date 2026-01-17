@@ -37,21 +37,21 @@ void resolve_location_menu_enter()
     
 }
 
-menu_t* resolve_location_menu_handle(int32_t event)
+menu_t* resolve_location_menu_handle(ui_event_e event)
 {
-    if (resolveLocationMenu.status == EVT_ON_ENTRY) resolveLocationMenu.status = 0;
+    if (resolveLocationMenu.status == EVT_ON_ENTRY) resolveLocationMenu.status = EVT_NONE;
     if (bestLocsNum > 0) // Locations are found
     {
         switch (event)
         {
         case KEY_LEFT:
             resolveLocationMenu.selectedOption = SAVE_NEW_OPTION;
-            resolveLocationMenu.status = 0;
+            resolveLocationMenu.status = EVT_NONE;
             break;
 
         case KEY_RIGHT:
             resolveLocationMenu.selectedOption = OVERWRITE_OPTION;
-            resolveLocationMenu.status = 0;
+            resolveLocationMenu.status = EVT_NONE;
             break;
 
         case KEY_ENTER:
@@ -79,6 +79,8 @@ menu_t* resolve_location_menu_handle(int32_t event)
         else
             return resolveLocationMenu.nextMenu;
         break;
+
+        default: break;
         }
     }
     else // No locations found

@@ -35,10 +35,10 @@ void loc_options_menu_enter()
     locOptionsMenu.status = EVT_ON_ENTRY;    
 }
 
-menu_t *loc_options_menu_handle(int32_t event)
+menu_t *loc_options_menu_handle(ui_event_e event)
 {
     if (locOptionsMenu.status == EVT_ON_ENTRY)
-        locOptionsMenu.status = 0;
+        locOptionsMenu.status = EVT_NONE;
 
     if (event == KEY_ENTER)
     {

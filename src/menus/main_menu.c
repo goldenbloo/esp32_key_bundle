@@ -37,7 +37,7 @@ menu_t mainMenu = {
     .exit_func = main_menu_exit,
 };
 
-menu_t *main_menu_handle(int32_t event)
+menu_t *main_menu_handle(ui_event_e event)
 {
     const char *TAG = "main_menu_handle";
     list_event_handle(&mainMenu, event);

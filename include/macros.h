@@ -1,3 +1,4 @@
+
 #define INPUT_SIGNAL_PIN    4
 #define LED_PIN             2
 #define COIL_OUTPUT_PIN     18
@@ -15,7 +16,6 @@
 #define COMP_RX             35
 #define OWI_TX              33
 #define PULLUP_PIN          25
-
  
 
 #define PERIOD              512
@@ -25,8 +25,6 @@
 #define PERIOD_HALF_LOW     140
 #define PERIOD_HALF_HIGH    386
 #define RMT_SIZE            64
-#define READ_MODE           0
-#define TRANSMIT_MODE       1
 
 #define FIELD_SIZE          30
 #define MENU_STACK_SIZE     10

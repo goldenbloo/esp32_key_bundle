@@ -28,9 +28,9 @@ void update_wifi_menu_enter()
     updateWifiMenu.selectedOption = NOT_SELECTED;
 }
 
-menu_t* update_wifi_menu_handle(int32_t event)
+menu_t* update_wifi_menu_handle(ui_event_e event)
 {
-    if (updateWifiMenu.status == EVT_ON_ENTRY) updateWifiMenu.status = 0;
+    if (updateWifiMenu.status == EVT_ON_ENTRY) updateWifiMenu.status = EVT_NONE;
 
     if (updateWifiMenu.status != EVT_SAVE_SUCCESS && updateWifiMenu.status != EVT_SAVE_FAIL)
         switch (event)
@@ -38,12 +38,12 @@ menu_t* update_wifi_menu_handle(int32_t event)
 
         case KEY_LEFT:
             updateWifiMenu.selectedOption = SAVE_OPTION;
-            updateWifiMenu.status = 0;
+            updateWifiMenu.status = EVT_NONE;
             break;
 
         case KEY_RIGHT:
             updateWifiMenu.selectedOption = CANCEL_OPTION;
-            updateWifiMenu.status = 0;
+            updateWifiMenu.status = EVT_NONE;
             break;
 
         case KEY_ENTER:

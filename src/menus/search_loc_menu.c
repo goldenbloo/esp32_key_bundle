@@ -38,10 +38,10 @@ void search_loc_menu_enter()
     searchLocMenu.selectedOption = NOT_SELECTED;
 }
 
-menu_t *search_loc_menu_handle(int32_t event)
+menu_t *search_loc_menu_handle(ui_event_e event)
 {
     if (searchLocMenu.status == EVT_ON_ENTRY)
-        searchLocMenu.status = 0;
+        searchLocMenu.status = EVT_NONE;
 
     switch (event)
     {

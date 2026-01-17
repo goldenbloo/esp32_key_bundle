@@ -28,9 +28,9 @@ void delete_loc_menu_enter()
     deleteLocMenu.selectedOption = NOT_SELECTED;
 }
 
-menu_t* delete_loc_menu_handle(int32_t event)
+menu_t* delete_loc_menu_handle(ui_event_e event)
 {
-    if (deleteLocMenu.status == EVT_ON_ENTRY) deleteLocMenu.status = 0;
+    if (deleteLocMenu.status == EVT_ON_ENTRY) deleteLocMenu.status = EVT_NONE;
 
     if (deleteLocMenu.status != EVT_DELETE_SUCCESS && deleteLocMenu.status != EVT_DELETE_FAIL)
         switch (event)
@@ -38,12 +38,12 @@ menu_t* delete_loc_menu_handle(int32_t event)
 
         case KEY_LEFT:
             deleteLocMenu.selectedOption = DELETE_OPTION;
-            deleteLocMenu.status = 0;
+            deleteLocMenu.status = EVT_NONE;
             break;
 
         case KEY_RIGHT:
             deleteLocMenu.selectedOption = CANCEL_OPTION;
-            deleteLocMenu.status = 0;
+            deleteLocMenu.status = EVT_NONE;
             break;
 
         case KEY_ENTER:

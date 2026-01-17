@@ -35,9 +35,9 @@ void transmit_loc_tag_menu_exit()
     rfid_disable_rx_tx_tag();
 }
 
-menu_t* transmit_loc_tag_menu_handle(int32_t event)
+menu_t* transmit_loc_tag_menu_handle(ui_event_e event)
 {   
-    transmitLocTagMenu.status = 0;
+    transmitLocTagMenu.status = EVT_NONE;
     return NULL;
 }
 

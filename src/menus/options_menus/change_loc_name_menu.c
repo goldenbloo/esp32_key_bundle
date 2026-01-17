@@ -35,10 +35,10 @@ void change_loc_name_menu_enter()
     changeLocNameMenu.status = EVT_ON_ENTRY;  
 }
 
-menu_t *change_loc_name_menu_handle(int32_t event)
+menu_t *change_loc_name_menu_handle(ui_event_e event)
 {
     if (changeLocNameMenu.status == EVT_ON_ENTRY)
-        changeLocNameMenu.status = 0;
+        changeLocNameMenu.status = EVT_NONE;
 
     if (updateWifiMenu.status != EVT_SAVE_SUCCESS && updateWifiMenu.status != EVT_SAVE_FAIL)
     {

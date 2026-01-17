@@ -149,7 +149,7 @@ const uint8_t keyMapLen[NUM_BUTTONS] = {
     5  // For Key '9'
 };
 
-void keypad_button_press(int8_t pressedButton)
+void keypad_button_press(ui_event_e pressedButton)
 {
     const char* TAG = "keypad_button_press";
     if (keypad.textBuffer == NULL || keypad.bufferSize < 1)
@@ -190,12 +190,13 @@ void keypad_button_press(int8_t pressedButton)
     default:
         if ((pressedButton >= KEY_0) && (pressedButton <= KEY_9))
         {
+            uint32_t pressedButtonIdx = pressedButton - KEY_0;
             // Check if this is a continuation of the current multi-tap sequence.
             if (keypad.lastPressedButton == pressedButton &&
                 (currentTick - keypad.lastTick) < (CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ * 1000000UL))
             {
                 // Cycle among the possible characters.
-                keypad.currentPressCount = (keypad.currentPressCount + 1) % keyMapLen[pressedButton];
+                keypad.currentPressCount = (keypad.currentPressCount + 1) % keyMapLen[pressedButtonIdx];
             }
             else
             {
@@ -216,7 +217,7 @@ void keypad_button_press(int8_t pressedButton)
             int16_t pendingIndex = keypad.bufferPos + 1;
             if (pendingIndex < keypad.bufferSize - 1)
             { // Make sure there is room for the char and a null terminator.
-                char newChar = keyMap[pressedButton][keypad.currentPressCount];
+                char newChar = keyMap[pressedButtonIdx][keypad.currentPressCount];
                 if ((newChar >= 'a') && (newChar <= 'z') && keypad.letterIsCapital)
                     newChar -= 0x20; // Capitalize if needed.
                 keypad.textBuffer[pendingIndex] = newChar;
@@ -232,7 +233,7 @@ void keypad_button_press(int8_t pressedButton)
         }      
 
         keypad.lastTick = currentTick;
-        int32_t event = EVT_KEYPAD_PRESS;
+        ui_event_e event = EVT_KEYPAD_PRESS;
         xQueueSendToBack(uiEventQueue, &event, pdMS_TO_TICKS(15));
 
         break;
@@ -365,7 +366,7 @@ void tag_tx_cycle_callback()
     }
 }
 
-void list_event_handle(menu_t *menu, int32_t event)
+void list_event_handle(menu_t *menu, ui_event_e event)
 {
     const char* TAG = "list_handle";
     if (menu->listBox == NULL)

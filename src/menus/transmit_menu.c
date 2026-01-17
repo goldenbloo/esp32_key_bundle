@@ -65,9 +65,9 @@ void transmit_menu_enter()
         xTaskCreate(tag_tx_cycle_callback, "tag_tx_cycle_callback", 2048, NULL, 0, &rfidAutoTxHandler);
 }
 
-menu_t* transmit_menu_handle(int32_t event)
+menu_t* transmit_menu_handle(ui_event_e event)
 {
-    if (transmitMenu.status == EVT_ON_ENTRY) transmitMenu.status = 0;
+    if (transmitMenu.status == EVT_ON_ENTRY) transmitMenu.status = EVT_NONE;
 
     if (bestLocsNum == 0)
     {

@@ -30,6 +30,8 @@ typedef enum
 
 typedef enum
 {    
+    EVT_INVALID = -1,
+    EVT_NONE = 0,
     KEY_0,KEY_1,KEY_2,KEY_3,
     KEY_4,KEY_5,KEY_6,KEY_7,
     KEY_8,KEY_9,
@@ -104,7 +106,7 @@ typedef struct menu_t
     menu_textbox_t* textBox;      
     menu_t* nextMenu;
     
-    menu_t* (*event_handler_func )(int32_t event);
+    menu_t* (*event_handler_func )(ui_event_e event);
     void    (*enter_func  )();
     void    (*exit_func   )();
     void    (*draw_func   )();
@@ -165,7 +167,7 @@ extern u8g2_t u8g2;
 void list_test();
 void display_wifi_aps(wifi_ap_record_t *ap_records, uint16_t ap_count, uint32_t startPage);
 // void display_loc_save(QueueHandle_t keyEventQueue);
-void keypad_button_press(int8_t pressedButton);
+void keypad_button_press(ui_event_e pressedButton);
 void confirmation_timer_callback(void *arg);
 void ui_handler_task(void* args);
 void display_delay_timer_callback();
@@ -174,7 +176,7 @@ void display_list(menu_t *menu);
 void scroll_text_task(void* arg);
 menu_t* go_to_main_menu();
 menu_t *go_to_loc_options_menu();
-void list_event_handle(menu_t *menu, int32_t event);
+void list_event_handle(menu_t *menu, ui_event_e event);
 void text_field_draw(uint32_t textFieldPosX, uint32_t textFieldPosY);
 void scroll_task_stop();
 
@@ -182,65 +184,65 @@ void stack_push(menu_t* state);
 menu_t* stack_pop();
 
 //=======================================================================================
-menu_t *main_menu_handle(int32_t event);
+menu_t *main_menu_handle(ui_event_e event);
 void main_menu_draw();
 void main_menu_exit();
 
 void scan_tag_menu_enter();
-menu_t *scan_tag_menu_handle(int32_t event);
+menu_t *scan_tag_menu_handle(ui_event_e event);
 void scan_tag_menu_exit();
 void scan_tag_menu_draw();
 
 void scan_wifi_menu_enter();
-menu_t *scan_wifi_menu_handle(int32_t event);
+menu_t *scan_wifi_menu_handle(ui_event_e event);
 void scan_wifi_menu_exit();
 void scan_wifi_menu_draw();
 
 void save_tag_menu_enter();
-menu_t *save_tag_menu_handle(int32_t event);
+menu_t *save_tag_menu_handle(ui_event_e event);
 void save_tag_menu_draw();
 
 void transmit_menu_enter();
-menu_t *transmit_menu_handle(int32_t event);
+menu_t *transmit_menu_handle(ui_event_e event);
 void transmit_menu_exit();
 void transmit_menu_draw();
 
 void resolve_location_menu_enter();
-menu_t* resolve_location_menu_handle(int32_t event);
+menu_t* resolve_location_menu_handle(ui_event_e event);
 void resolve_location_menu_exit();
 void resolve_location_menu_draw();
 
 void search_loc_menu_enter(); 
-menu_t *search_loc_menu_handle(int32_t event);
+menu_t *search_loc_menu_handle(ui_event_e event);
 void search_loc_menu_exit();
 void search_loc_menu_draw();
 
 void found_loc_list_menu_enter();
-menu_t *found_loc_list_menu_handle(int32_t event);
+menu_t *found_loc_list_menu_handle(ui_event_e event);
 void found_loc_list_menu_draw();
 
 void loc_options_menu_enter();
-menu_t *loc_options_menu_handle(int32_t event);
+menu_t *loc_options_menu_handle(ui_event_e event);
 void loc_options_menu_draw();
 
 void change_loc_name_menu_enter();
-menu_t *change_loc_name_menu_handle(int32_t event);
+menu_t *change_loc_name_menu_handle(ui_event_e event);
 void change_loc_name_menu_draw();
 
 void update_wifi_menu_enter();
-menu_t *update_wifi_menu_handle(int32_t event);
+menu_t *update_wifi_menu_handle(ui_event_e event);
 void update_wifi_menu_draw();
 
 void update_tag_menu_enter();
-menu_t* update_tag_menu_handle(int32_t event);
+menu_t* update_tag_menu_handle(ui_event_e event);
 void update_tag_menu_draw();
 
 void delete_loc_menu_enter();
-menu_t* delete_loc_menu_handle(int32_t event);
+menu_t* delete_loc_menu_handle(ui_event_e event);
 void delete_loc_menu_draw();
 
 void transmit_loc_tag_menu_enter();
-menu_t* transmit_loc_tag_menu_handle(int32_t event);
+menu_t* transmit_loc_tag_menu_handle(ui_event_e event);
 void transmit_loc_tag_menu_exit();
 void transmit_loc_tag_menu_draw();
 
