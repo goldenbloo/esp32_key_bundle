@@ -4,6 +4,8 @@
 #include "esp_timer.h"
 #include "driver/rmt_tx.h"
 #include "esp_log.h"
+#include "soc/gpio_struct.h"
+#include "soc/gpio_reg.h"
 #include "macros.h"
 #include "rfid.h"
 #include "touch.h"
@@ -14,8 +16,6 @@
 
 QueueHandle_t touchInputIsrEvtQueue = NULL;
 TaskHandle_t kt2ReadTaskHandler = NULL;
-
-
 static bool timeAvgCalculated = false, syncBitFound = false, startOk = false;
 static volatile uint32_t lastIsrTime = 0, lastTime = 0;
 static uint32_t sumCnt = 0, timeHigh = 0, timeLow = 0, timeAvg = 0, timeSum = 0, skipCnt = 0;
@@ -25,15 +25,16 @@ uint32_t keyId;
 
 void IRAM_ATTR comp_rx_isr_handler(void *arg)
 {
-    if ((esp_cpu_get_cycle_count() - lastIsrTime ) <  50 * CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ)            
+    uint32_t duration = esp_cpu_get_cycle_count() - lastIsrTime;
+    if ((duration) <  50 * CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ)            
         return;
     
     lastIsrTime = esp_cpu_get_cycle_count();
-    touch_input_evt evt = {
-        // .currentTime = esp_timer_get_time(),
-        .currentTime = esp_cpu_get_cycle_count(),
-        .level = gpio_get_level(COMP_RX),
+    touch_input_evt evt = {        
+        .duration = duration,
+        .level = (GPIO.in1.val >> (COMP_RX - 32)) & 1, // .in1 - GPIO 32-39
     };
+
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
     xQueueSendToBackFromISR(touchInputIsrEvtQueue, &evt, &xHigherPriorityTaskWoken);
     if (xHigherPriorityTaskWoken == pdTRUE)
@@ -60,110 +61,113 @@ void read_metakom_kt2()
         ESP_LOGE(TAG, "Error occurred: %s (0x%x)", esp_err_to_name(err), err);
     
     if (kt2ReadTaskHandler == NULL)
-        xTaskCreate(kt2_read_deferred_task, "kt2_read_deferred_task", 2048, NULL, 4, &kt2ReadTaskHandler);
+        xTaskCreate(touch_isr_deferred_task, "touch_isr_deferred_task", 2048, NULL, 4, &kt2ReadTaskHandler);
     gpio_set_intr_type(COMP_RX, GPIO_INTR_ANYEDGE);
 }
 
-void kt2_read_deferred_task(void* args)
+void touch_isr_deferred_task(void *args)
 {
     touch_input_evt evt;
     for (;;)
     {
         if (xQueueReceive(touchInputIsrEvtQueue, &evt, portMAX_DELAY))
         {
-            if (skipCnt < MAX_SKIP)
-            {
-                lastTime = evt.currentTime;
-                skipCnt++;
-                continue;
-            }
-            
-            gpio_set_level(LED_PIN,evt.level);
-            uint32_t duration = (evt.currentTime - lastTime) / CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ;
-            lastTime = evt.currentTime;
-            
-            // printf("%lu\t%d\t%lu\n", duration, evt.level, idx);
+            kt2_read_edge(evt.level, evt.duration);
+        }
+    }
+}
 
-            if (sumCnt < MAX_SUM) // Sum time of logic level
-            {
-                timeSum += duration;
-                sumCnt++;                
-                continue;
-            }
+void kt2_read_edge(uint8_t level, uint32_t duration)
+{
 
-            if (!timeAvgCalculated)
-            {
-                timeAvg = timeSum / sumCnt; // Calculate half period
-                timeAvgCalculated = true;
-            }
-            else // Average is calculated
-            {
-                if (evt.level == 1)
-                    timeLow = duration;
-                else
-                    timeHigh = duration;
+    if (skipCnt < MAX_SKIP)
+    {
+        skipCnt++;
+        return;
+    }        
 
-                if ((timeHigh > ((timeAvg * 1638) >> 10)) && (timeHigh < (timeAvg * 5)) && !syncBitFound) // Sync bit detection (timeHigh > (timeAvg * 1.6))
+    // gpio_set_level(LED_PIN, evt.level);
+    if (level) GPIO.out_w1ts |= 1UL << LED_PIN;
+    else       GPIO.out_w1tc |= 1UL << LED_PIN;
+
+    if (sumCnt < MAX_SUM) // Sum time of logic level
+    {
+        timeSum += duration;
+        sumCnt++;
+        return;
+    }
+
+    if (!timeAvgCalculated)
+    {
+        timeAvg = timeSum / sumCnt; // Calculate half period
+        timeAvgCalculated = true;
+    }
+    else // Average is calculated
+    {
+        if (level == 1)
+            timeLow = duration;
+        else
+            timeHigh = duration;
+
+        if ((timeHigh > ((timeAvg * 1638) >> 10)) && (timeHigh < (timeAvg * 5)) && !syncBitFound) // Sync bit detection (timeHigh > (timeAvg * 1.6))
+        {
+            syncBitFound = true;
+            bitCnt = 0;
+            startWordCnt = 0;
+            startWord = 0;
+            keyId = 0;
+            parity = 0;
+            startOk = false;
+            return;            
+        }
+
+        if (syncBitFound && (level == 1)) // On rising edge determine bit
+        {
+            uint8_t bit = timeLow > timeAvg ? 1 : 0;
+
+            if (!startOk) // Find and check start word
+            {
+                startWord = startWord | (bit << startWordCnt);
+                startWordCnt++;
+
+                if (startWordCnt == 3) // Start word found
                 {
-                    syncBitFound = true;
-                    bitCnt = 0;
-                    startWordCnt = 0;
-                    startWord = 0;
-                    keyId = 0;
-                    parity = 0;
-                    startOk = false;                   
-                    continue;
+                    if (startWord == 0b010)
+                        startOk = true;
+                    else // Reset on faliure
+                    {
+                        startWordCnt = 0;
+                        startWord = 0;
+                        syncBitFound = false;
+                        bitCnt = 0;
+                    }
                 }
-
-                if (syncBitFound && (evt.level == 1)) // On rising edge determine bit
+            }
+            else if (bitCnt < 32) // Start word ok
+            {
+                keyId = keyId | (bit << bitCnt);
+                parity = parity ^ bit; // Calculate parity
+                if ((bitCnt & 7) == 7 && parity != 0)
                 {
-                    uint8_t bit = timeLow > timeAvg ? 1 : 0;
-
-                    if (!startOk) // Find and check start word
-                    {
-                        startWord = startWord | (bit << startWordCnt);
-                        startWordCnt++;
-
-                        if (startWordCnt == 3) // Start word found
-                        {
-                            if (startWord == 0b010)                            
-                                startOk = true;                            
-                            else // Reset on faliure
-                            {
-                                startWordCnt = 0;
-                                startWord = 0;
-                                syncBitFound = false;
-                                bitCnt = 0;
-                            }
-                        }
-                        
-                    }
-                    else if (bitCnt < 32) // Start word ok
-                    {
-                        keyId = keyId | (bit << bitCnt);                        
-                        parity = parity ^ bit; // Calculate parity
-                        if ((bitCnt & 7) == 7 && parity != 0)
-                        {
-                            bitCnt = 0;
-                            syncBitFound = false;
-                            parity = 0;
-                            startOk = false; 
-                        }
-                        bitCnt++;
-                    }
-                    else if (bitCnt == 32)
-                    {
-                        touch_print_t printEvt ={
-                                .evt = 8,
-                                .tick = lastTime,
-                                .bitCnt = bitCnt,
-                                .data = keyId,};
-                        xQueueSend(printQueue, &printEvt, 0);                        
-                        gpio_set_intr_type(COMP_RX, GPIO_INTR_DISABLE);
-                        kt2ReadTaskHandler = NULL;
-                        vTaskDelete(NULL);
-                    }
-                }    
+                    bitCnt = 0;
+                    syncBitFound = false;
+                    parity = 0;
+                    startOk = false;
+                }
+                bitCnt++;
+            }
+            else if (bitCnt == 32)
+            {
+                touch_print_t printEvt = {
+                    .evt = 8,
+                    .tick = lastTime,
+                    .bitCnt = bitCnt,
+                    .data = keyId,
+                };
+                xQueueSend(printQueue, &printEvt, 0);
+                gpio_set_intr_type(COMP_RX, GPIO_INTR_DISABLE);
+                kt2ReadTaskHandler = NULL;
+                vTaskDelete(NULL);
             }
         }
     }

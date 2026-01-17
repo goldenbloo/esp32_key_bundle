@@ -9,7 +9,7 @@ extern rmt_transmit_config_t touch_tx_config;
 
 typedef struct {
     bool level;    
-    uint32_t currentTime;
+    uint32_t duration;
 } touch_input_evt;
 
 typedef struct
@@ -25,8 +25,9 @@ typedef struct
 
 void read_metakom_kt2();
 void comp_rx_isr_handler(void *arg);
-void kt2_read_deferred_task(void* args);
+void touch_isr_deferred_task(void* args);
 void transmit_metakom_k2();
+void kt2_read_edge(uint8_t level, uint32_t duration);
 
 
 
