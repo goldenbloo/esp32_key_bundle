@@ -34,7 +34,7 @@ menu_t *scan_tag_menu_handle(ui_event_e event)
     const char *TAG = "scan_tag_handle";
     switch (event)
     {
-    case EVT_RFID_SCAN_DONE:
+    case EVT_KEY_SCAN_DONE:
         scanTagMenu.status = event; // Send event data to dislapy callback
         // Delay timer to show access points
         display_delay_cb_arg = EVT_NEXT_MENU;
@@ -73,7 +73,7 @@ void scan_tag_menu_draw()
     u8g2_SetFont(&u8g2, u8g2_font_6x13B_tr);
     u8g2_ClearBuffer(&u8g2);
     // int startPosY = scanTagMenu.startPosY;
-    if (scanTagMenu.status == EVT_RFID_SCAN_DONE)
+    if (scanTagMenu.status == EVT_KEY_SCAN_DONE)
     {
         char tagStr[17] = {0};
         sprintf(tagStr, "0x%010llX", currentTag);

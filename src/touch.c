@@ -6,20 +6,19 @@
 #include "esp_log.h"
 #include "soc/gpio_struct.h"
 #include "soc/gpio_reg.h"
+#include "string.h"
 #include "macros.h"
 #include "rfid.h"
 #include "touch.h"
 
-#define MAX_SUM  1000
-#define MAX_SKIP 2000
+#define MAX_SUM  200
+#define MAX_SKIP 200
 
 
 QueueHandle_t touchInputIsrEvtQueue = NULL;
 TaskHandle_t kt2ReadTaskHandler = NULL;
-static bool timeAvgCalculated = false, syncBitFound = false, startOk = false;
-static volatile uint32_t lastIsrTime = 0, lastTime = 0;
-static uint32_t sumCnt = 0, timeHigh = 0, timeLow = 0, timeAvg = 0, timeSum = 0, skipCnt = 0;
-static uint8_t bitCnt = 0, startWordCnt = 0, startWord = 0, parity = 0;
+static volatile uint32_t lastIsrTime = 0;
+static kt1233_decoder_t kt2;
 uint32_t keyId;
 
 
@@ -47,13 +46,8 @@ void read_metakom_kt2()
 
     uint8_t printEvt = 4;
     xQueueSend(printQueue, &printEvt, 0);
-
-    timeHigh = timeLow = timeAvg = sumCnt = timeSum = 0;
-    syncBitFound = false;
-    timeAvgCalculated = false;
-    lastTime = esp_cpu_get_cycle_count();
-    skipCnt = 0;
-
+    
+    memset(&kt2, 0, sizeof(kt2)); // Reset decoder
     gpio_set_level(PULLUP_PIN, 0); // Enable pullup
     gpio_set_level(METAKOM_TX, 0);
     esp_err_t err = rmt_disable(touch_tx_ch);
@@ -72,96 +66,96 @@ void touch_isr_deferred_task(void *args)
     {
         if (xQueueReceive(touchInputIsrEvtQueue, &evt, portMAX_DELAY))
         {
-            kt2_read_edge(evt.level, evt.duration);
+            kt2_read_edge(evt.level, evt.duration, &kt2);
         }
     }
 }
 
-void kt2_read_edge(uint8_t level, uint32_t duration)
+void kt2_read_edge(uint8_t level, uint32_t duration, kt1233_decoder_t* d)
 {
 
-    if (skipCnt < MAX_SKIP)
+    if (d->skipCnt < MAX_SKIP)
     {
-        skipCnt++;
+        d->skipCnt++;
         return;
     }        
 
     // gpio_set_level(LED_PIN, evt.level);
-    if (level) GPIO.out_w1ts |= 1UL << LED_PIN;
-    else       GPIO.out_w1tc |= 1UL << LED_PIN;
+    // if (level) GPIO.out_w1ts |= 1UL << LED_PIN;
+    // else       GPIO.out_w1tc |= 1UL << LED_PIN;
 
-    if (sumCnt < MAX_SUM) // Sum time of logic level
+    if (d->sumCnt < MAX_SUM) // Sum time of logic level
     {
-        timeSum += duration;
-        sumCnt++;
+        d->timeSum += duration;
+        d->sumCnt++;
         return;
     }
 
-    if (!timeAvgCalculated)
+    if (!d->timeAvgCalculated)
     {
-        timeAvg = timeSum / sumCnt; // Calculate half period
-        timeAvgCalculated = true;
+        d->timeAvg = d->timeSum / d->sumCnt; // Calculate half period
+        d->timeAvgCalculated = true;
     }
     else // Average is calculated
     {
+        
         if (level == 1)
-            timeLow = duration;
+            d->timeLow = duration;
         else
-            timeHigh = duration;
+            d->timeHigh = duration;
 
-        if ((timeHigh > ((timeAvg * 1638) >> 10)) && (timeHigh < (timeAvg * 5)) && !syncBitFound) // Sync bit detection (timeHigh > (timeAvg * 1.6))
+        if ((d->timeHigh > ((d->timeAvg * 1638) >> 10)) && 
+            (d->timeHigh < (d->timeAvg * 5)) && !d->syncBitFound) // Sync bit detection (timeHigh > (timeAvg * 1.6))
         {
-            syncBitFound = true;
-            bitCnt = 0;
-            startWordCnt = 0;
-            startWord = 0;
+            d->syncBitFound = true;
+            d->startOk = false;
+            d->bitCnt = 0;
+            d->startWordCnt = 0;
+            d->startWord = 0;           
+            d->parity = 0;            
             keyId = 0;
-            parity = 0;
-            startOk = false;
             return;            
         }
 
-        if (syncBitFound && (level == 1)) // On rising edge determine bit
+        if (d->syncBitFound && (level == 1)) // On rising edge determine bit
         {
-            uint8_t bit = timeLow > timeAvg ? 1 : 0;
-
-            if (!startOk) // Find and check start word
+            uint8_t bit = d->timeLow > d->timeAvg ? 1 : 0;
+            if (!d->startOk) // Find and check start word
             {
-                startWord = startWord | (bit << startWordCnt);
-                startWordCnt++;
+                d->startWord = d->startWord | (bit << d->startWordCnt);
+                d->startWordCnt++;
 
-                if (startWordCnt == 3) // Start word found
+                if (d->startWordCnt == 3) // Start word found
                 {
-                    if (startWord == 0b010)
-                        startOk = true;
+                    if (d->startWord == 0b010)
+                        d->startOk = true;
                     else // Reset on faliure
                     {
-                        startWordCnt = 0;
-                        startWord = 0;
-                        syncBitFound = false;
-                        bitCnt = 0;
+                        d->startWordCnt = 0;
+                        d->startWord = 0;
+                        d->syncBitFound = false;
+                        d->bitCnt = 0;
                     }
                 }
             }
-            else if (bitCnt < 32) // Start word ok
+            else if (d->bitCnt < 32) // Start word ok
             {
-                keyId = keyId | (bit << bitCnt);
-                parity = parity ^ bit; // Calculate parity
-                if ((bitCnt & 7) == 7 && parity != 0)
+                keyId = keyId | (bit << d->bitCnt);
+                d->parity = d->parity ^ bit; // Calculate parity
+                if ((d->bitCnt & 7) == 7 && d->parity != 0)
                 {
-                    bitCnt = 0;
-                    syncBitFound = false;
-                    parity = 0;
-                    startOk = false;
+                    d->bitCnt = 0;
+                    d->syncBitFound = false;
+                    d->parity = 0;
+                    d->startOk = false;
                 }
-                bitCnt++;
+                d->bitCnt++;
             }
-            else if (bitCnt == 32)
+            else if (d->bitCnt == 32)
             {
                 touch_print_t printEvt = {
-                    .evt = 8,
-                    .tick = lastTime,
-                    .bitCnt = bitCnt,
+                    .evt = 8,                    
+                    .bitCnt = d->bitCnt,
                     .data = keyId,
                 };
                 xQueueSend(printQueue, &printEvt, 0);

@@ -22,12 +22,31 @@ typedef struct
    uint32_t duration;
 } touch_print_t;
 
+typedef struct {    
+    uint32_t sumCnt;
+    uint32_t timeAvg;
+    uint32_t timeSum;
+    uint32_t skipCnt;
+    uint32_t timeLow;
+    uint32_t timeHigh;
+   
+    uint8_t bitCnt;
+    uint8_t startWordCnt;
+    uint8_t startWord;
+    uint8_t parity;
+
+    bool timeAvgCalculated;
+    bool syncBitFound;
+    bool startOk;
+} kt1233_decoder_t;
+
+
 
 void read_metakom_kt2();
 void comp_rx_isr_handler(void *arg);
 void touch_isr_deferred_task(void* args);
 void transmit_metakom_k2();
-void kt2_read_edge(uint8_t level, uint32_t duration);
+void kt2_read_edge(uint8_t level, uint32_t duration, kt1233_decoder_t* decoder);
 
 
 

@@ -30,7 +30,7 @@ void rfid_deferred_task(void *arg)
                 currentTag = long_tag;
                 memcpy(currentTagArray, evt.tag, sizeof(currentTagArray));
 
-                int32_t event = EVT_RFID_SCAN_DONE;
+                int32_t event = EVT_KEY_SCAN_DONE;
                 xQueueSendToBack(uiEventQueue, &event, pdMS_TO_TICKS(15));
                 rfid_disable_rx_tx_tag();
                 // xSemaphoreGive()
@@ -204,12 +204,161 @@ void IRAM_ATTR rfid_read_isr_handler(void *arg)
             return;
         }
     }
-
-    // Enqueue the event
-// end:
-    
-    gpio_intr_enable(INPUT_SIGNAL_PIN);
 }
+
+
+void manchester_read (void *arg)
+{
+    static uint32_t lastTick = 0;
+    static bool lastLevel = 0;
+    static manchester_t m;
+    static uint32_t idx = 0;
+    gpio_intr_disable(INPUT_SIGNAL_PIN);
+    uint32_t currTick = esp_cpu_get_cycle_count();
+    rfid_read_event_t evt;
+    //  if (gptimer_get_raw_count(signalTimer, &evt.ms) != ESP_OK)
+    //     evt.ms = 0; // Default to 0 if retrieval fails
+    // gptimer_set_raw_count(signalTimer, 0);
+    evt.level = gpio_get_level(INPUT_SIGNAL_PIN); // Capture the current level
+
+    uint32_t tickDiff = (currTick - lastTick);
+    evt.ms = tickDiff / CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ;
+
+    // if (tickDiff > PERIOD_HIGH * CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ || tickDiff < PERIOD_HALF_LOW *CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ)
+    // if (evt.ms > PERIOD_HIGH || evt.ms < PERIOD_HALF_LOW )
+    if (evt.ms < PERIOD_HALF_LOW || (lastLevel == evt.level))
+    {
+        gpio_intr_enable(INPUT_SIGNAL_PIN);
+        return;
+    }
+    // // evt.ms = esp_log_timestamp();
+    lastTick = currTick;
+    lastLevel = evt.level;
+    evt.idx = idx++;
+
+    //---------------------------------------------------------------
+    if ((evt.ms > PERIOD_HIGH) || (evt.ms < PERIOD_HALF_LOW))
+    {
+        syncErrorFunc(&m);
+        // goto end;
+        gpio_intr_enable(INPUT_SIGNAL_PIN);
+        return;
+    }
+
+    // If Manchester sync is not established and signal state time between PREIOD_LOW and PERIOD_HIGH
+    // Establish sync and set current bit
+    if (!m.isSynced)
+    {
+        if ((evt.ms > PERIOD_LOW) && (evt.ms < PERIOD_HIGH))
+        {
+            m.isSynced = true;
+            m.currentBit = evt.level;
+        }
+    }
+    // If m sync is established and signal state time is more than PERIOD_LOW
+    else
+    {
+        m.lastBit = m.currentBit;
+        // If signal state time is more PERIOD_LOW
+        // Set currentBit = !lastBit
+        if (evt.ms > PERIOD_LOW)
+        {
+            if (m.checkNextEdge) // shouldn’t happen: we expected a half-edge but got a full one
+            {
+                syncErrorFunc(&m);
+                gpio_intr_enable(INPUT_SIGNAL_PIN);
+                return;
+            }
+            m.currentBit = !m.lastBit;
+            m.bitIsReady = true;
+            // gpio_set_level(LED_PIN, m.currentBit);
+        }
+        // If m sync is established and counter is more than PERIOD_HALF_LOW
+        else if (evt.ms > PERIOD_HALF_LOW)
+        {
+            if (!m.checkNextEdge)
+                m.checkNextEdge = true;
+            else
+            {
+                m.currentBit = m.lastBit;
+                m.bitIsReady = true;
+                m.checkNextEdge = false;
+                // gpio_set_level(LED_PIN, m.currentBit);
+            }
+        }
+        else
+        {
+            syncErrorFunc(&m);
+            gpio_intr_enable(INPUT_SIGNAL_PIN);
+            return;
+        }                    
+    }
+    // We are reading full tag with start and stop bits first into a buffer and then check if all is good
+    if (m.bitIsReady)
+    {
+        m.bitIsReady = false;
+        m.tagInputBuff = (m.tagInputBuff << 1) | m.currentBit; // Shift to left and add current bit if bit is ready
+        evt.buf = m.tagInputBuff;
+
+        if ((m.tagInputBuff & 0xFF80000000000000) == 0xFF80000000000000) // Check if fist 9 bits are all 1
+        {
+            // ESP_LOGI(TAG, "buff:\t %#llx", m.tagInputBuff);
+            bool isParityOk = true;
+            // Parity by rows
+            for (uint8_t i = 5; i < 55; i += 5)
+            {
+                uint8_t parity = 0;
+                for (uint8_t j = 0; j < 5; j++)
+                    parity ^= (m.tagInputBuff >> (i + j)) & 1;
+                if (parity != 0)
+                {
+                    isParityOk = false;
+                    break;
+                }
+            }
+            // Parity by columns
+            for (uint8_t i = 1; i < 5; i++)
+            {
+                uint8_t parity = 0;
+                for (uint8_t j = 0; j < 55; j += 5)
+                    parity ^= (m.tagInputBuff >> (i + j)) & 1;
+                if (parity != 0)
+                {
+                    isParityOk = false;
+                    break;
+                }
+            }
+            if (isParityOk)
+            {
+                uint8_t nibbles[10];
+                for (uint8_t i = 0; i < 10; i++)
+                {
+                    uint8_t shift = (i + 1) * 5 + 1;
+                    nibbles[i] = (m.tagInputBuff >> shift) & 0x0F;
+                }
+                for (uint8_t byte = 0; byte < 5; byte++)                
+                    evt.tag[byte] = (nibbles[2 * byte + 1] << 4) | (nibbles[2 * byte]);
+                m.tagInputBuff = 0;    
+                gpio_intr_enable(INPUT_SIGNAL_PIN);
+                BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+                xQueueSendToBackFromISR(rfidInputIsrEvtQueue, &evt, &xHigherPriorityTaskWoken);
+                if (xHigherPriorityTaskWoken)                
+                    portYIELD_FROM_ISR();                
+            }
+            else 
+            {
+                gpio_intr_enable(INPUT_SIGNAL_PIN);
+                return;
+            }
+        }
+        else
+        {
+            gpio_intr_enable(INPUT_SIGNAL_PIN);
+            return;
+        }
+    }
+}
+
 
 char *int64_to_char_bin(char *str, uint64_t num) // Minumal char buffer size is 65
 {
@@ -285,10 +434,8 @@ uint64_t rfid_array_to_tag(uint8_t tagArr[])
     return long_tag;
 }
 
-
 void rfid_enable_rx_tag()
-{
-   
+{   
     const char* TAG = "enable read tag";
     esp_err_t err = rmt_disable(rfid_tx_ch);
     if (err != ESP_ERR_INVALID_STATE && err != ESP_OK)

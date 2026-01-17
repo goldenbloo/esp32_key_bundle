@@ -46,7 +46,7 @@ typedef enum
     KEY_ENTER,   
     KEY_BACK,
 
-    EVT_RFID_SCAN_DONE,    
+    EVT_KEY_SCAN_DONE,    
     EVT_WIFI_SCAN_DONE,
     EVT_NEXT_MENU,
     EVT_KEYPAD_PRESS,

@@ -205,7 +205,7 @@ void gpio_pins_init()
 
     // Touch memory pins
     // Pullup pin
-    gpio_set_level(PULLUP_PIN, 0); // NPN pullup enabled
+    gpio_set_level(PULLUP_PIN, 0); // NPN pullup enabled; TO BE DISABLED AFTER TESTING
     gpio_config_t touch_pullup_config = {
         .mode = GPIO_MODE_OUTPUT,
         .pin_bit_mask = (1ULL << PULLUP_PIN),
