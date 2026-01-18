@@ -1,7 +1,7 @@
 
-#define INPUT_SIGNAL_PIN    4
+#define RFID_RX             4
 #define LED_PIN             2
-#define COIL_OUTPUT_PIN     18
+#define RFID_CLK_DATA       18
 #define COIL_VCC_PIN        5
 #define BUTTON_PIN          23
 #define CONFIG_SDA_GPIO     21
@@ -25,6 +25,12 @@
 #define PERIOD_HALF_LOW     140
 #define PERIOD_HALF_HIGH    386
 #define RMT_SIZE            64
+
+
+#define MUL_BY_0_8(x)       (((x) * 52429) >> 16)
+#define MUL_BY_0_75(x)      (((x) * 49152) >> 16)
+#define MUL_BY_1_2(x)       (((x) * 78643) >> 16)
+#define MUL_BY_1_25(x)      (((x) * 81920) >> 16)
 
 #define FIELD_SIZE          30
 #define MENU_STACK_SIZE     10

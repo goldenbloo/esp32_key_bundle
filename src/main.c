@@ -159,13 +159,13 @@ void gpio_pins_init()
     gpio_config_t inputSingal_config = {
         .intr_type = GPIO_INTR_ANYEDGE,
         .mode = GPIO_MODE_INPUT,
-        .pin_bit_mask = (1ULL << INPUT_SIGNAL_PIN),
+        .pin_bit_mask = (1ULL << RFID_RX),
         .pull_up_en = GPIO_PULLUP_ENABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE};
     ESP_ERROR_CHECK(gpio_config(&inputSingal_config));
     // Install GPIO ISR service and add the handler for our pin.
     ESP_ERROR_CHECK(gpio_install_isr_service(ESP_INTR_FLAG_DEFAULT));
-    ESP_ERROR_CHECK(gpio_isr_handler_add(INPUT_SIGNAL_PIN, rfid_read_isr_handler, (void *)INPUT_SIGNAL_PIN));
+    ESP_ERROR_CHECK(gpio_isr_handler_add(RFID_RX, rfid_read_isr_handler, (void *)RFID_RX));
 
     // Button GPIO interrupt setup
     gpio_config_t buttonState_config = {
@@ -454,7 +454,7 @@ void app_main(void)
     //-----------------------------------------------------
     gpio_set_direction(COIL_VCC_PIN, GPIO_MODE_OUTPUT);
     gpio_set_level(COIL_VCC_PIN, 0);  
-    gpio_set_direction(COIL_OUTPUT_PIN, GPIO_MODE_OUTPUT);
+    gpio_set_direction(RFID_CLK_DATA, GPIO_MODE_OUTPUT);
     //-----------------------------------------------------
     wifi_init();
     display_init();
@@ -463,7 +463,7 @@ void app_main(void)
 
 //-----------------------------------------------------------------------------
     // Create the queue. 
-    rfidInputIsrEvtQueue = xQueueCreate(20, sizeof(rfid_read_event_t));
+    rfidInputIsrEvtQueue = xQueueCreate(20, sizeof(rfid_input_event_t));
     if (rfidInputIsrEvtQueue == NULL)
     {
         ESP_LOGE(TAG, "Failed to create event queue");
@@ -481,13 +481,13 @@ void app_main(void)
         ESP_LOGE(TAG, "Failed to create key queue");
         return;
     }
-    touchInputIsrEvtQueue = xQueueCreate(10, sizeof(rfid_read_event_t));
+    touchInputIsrEvtQueue = xQueueCreate(10, sizeof(rfid_input_event_t));
     if (touchInputIsrEvtQueue == NULL)
     {
         ESP_LOGE(TAG, "Failed to create event queue");
         return;
     }
-    printQueue = xQueueCreate(50, sizeof(touch_print_t));
+    printQueue = xQueueCreate(25, sizeof(touch_print_t));
     if (printQueue == NULL)
     {
         ESP_LOGE(TAG, "Failed to create event queue");
@@ -499,7 +499,7 @@ void app_main(void)
 //-----------------------------------------------------------------------------
 //RMT TX RFID Transmit
     rmt_tx_channel_config_t rfid_tx_ch_config = {
-        .gpio_num = COIL_OUTPUT_PIN,
+        .gpio_num = RFID_CLK_DATA,
         .clk_src = RMT_CLK_SRC_DEFAULT,
         .resolution_hz = 1000000, // 1 MHz resolution
         .mem_block_symbols = 64,

@@ -8,11 +8,8 @@ extern QueueHandle_t rfidInputIsrEvtQueue;
 
 typedef struct {
     bool level;
-    uint32_t ms;  // Optional: store a ms if needed
-    uint32_t idx;
-    uint64_t buf;
-    uint8_t tag[5];
-} rfid_read_event_t;
+    uint32_t duration;  // Optional: store a duration if needed
+} rfid_input_event_t;
 
 typedef struct
 {
@@ -31,7 +28,8 @@ typedef struct
  *   - NOT invert currentBit on that edge,
  *   - AND clear the flag afterward.
  */
-
+void syncErrorFunc(manchester_t *m);
+void manchester_read(uint8_t level, uint32_t duration);
 char* int64_to_char_bin(char* str, uint64_t num);
 char *int32_to_char_bin(char *str, uint32_t num);
 void rfid_read_isr_handler(void *arg);
