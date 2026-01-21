@@ -57,7 +57,7 @@ void transmit_menu_enter()
     locNameList[0] = "Auto";
     for (int i = 0; i < bestLocsNum; i++)
     {
-        ESP_LOGI(TAG, "Id: %ld\nName: %s\nTag: 0x%010llX", bestLocs[i].id, bestLocs[i].name, rfid_array_to_tag(bestLocs[i].tag));
+        ESP_LOGI(TAG, "Id: %ld\nName: %s\nTag: 0x%010llX", bestLocs[i].id, bestLocs[i].name, bestLocs[i].keyData.value);
         locNameList[i + 1] = bestLocs[i].name;
     }
 
@@ -87,7 +87,7 @@ menu_t* transmit_menu_handle(ui_event_e event)
             int8_t idx = transmitMenu.listBox->selectedRow - 1;
             if (idx > sizeof(bestLocs))
                 ESP_LOGE("transmit_menu_handle", "idx > sizeof(bestLocs)");
-            uint64_t rawTag = rfid_arr_tag_to_raw_tag(bestLocs[idx].tag);
+            uint64_t rawTag = rfid_arr_tag_to_raw_bitstream(bestLocs[idx].keyData.rfid.id);
             rfid_enable_tx_raw_tag(rawTag);
         }
     }

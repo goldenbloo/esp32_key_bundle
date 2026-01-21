@@ -76,7 +76,7 @@ void scan_tag_menu_draw()
     if (scanTagMenu.status == EVT_KEY_SCAN_DONE)
     {
         char tagStr[17] = {0};
-        sprintf(tagStr, "0x%010llX", currentTag);
+        sprintf(tagStr, "0x%010llX", currentKeyData.value);
         u8g2_DrawUTF8(&u8g2, u8g2_GetDisplayWidth(&u8g2) / 2 - u8g2_GetStrWidth(&u8g2, doneStr) / 2,
                       u8g2_GetDisplayHeight(&u8g2) / 2 - 10, doneStr);
         u8g2_DrawUTF8(&u8g2, u8g2_GetDisplayWidth(&u8g2) / 2 - u8g2_GetStrWidth(&u8g2, tagStr) / 2,

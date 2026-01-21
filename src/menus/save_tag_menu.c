@@ -83,7 +83,7 @@ menu_t* save_tag_menu_handle(ui_event_e event)
                 }
 
                 strncpy(loc.name, saveTagMenu.textBox->textFieldBuffer, sizeof(loc.name));
-                memcpy(loc.tag, currentTagArray, sizeof(loc.tag));
+                memcpy(&loc.keyData.value, &currentKeyData.value, sizeof(loc.keyData.value));
 
                 if (write_location(&loc))                
                     saveTagMenu.status = EVT_SAVE_SUCCESS;

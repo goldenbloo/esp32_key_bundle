@@ -356,9 +356,9 @@ void tag_tx_cycle_callback()
 
     for (;;)
     {
-        uint64_t rawTag = rfid_arr_tag_to_raw_tag(bestLocs[idx].tag);
+        uint64_t rawTag = rfid_arr_tag_to_raw_bitstream(bestLocs[idx].keyData.rfid.id);
         rfid_enable_tx_raw_tag(rawTag);
-        // ESP_LOGI("tag_tx_cycle", "loc: %s\ttag: 0x%010llX", bestLocs[i].name, tag);
+        // ESP_LOGI("tag_tx_cycle", "loc: %s\ttag: 0x%010llX", bestLocs[i].name, keyData);
         vTaskDelay(1000 / portTICK_PERIOD_MS);
         idx++;
         if (idx >= bestLocsNum)

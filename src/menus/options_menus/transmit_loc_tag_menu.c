@@ -26,7 +26,7 @@ void transmit_loc_tag_menu_enter()
     transmitLocTagMenu.status = EVT_ON_ENTRY;
     transmitLocTagMenu.selectedOption = NOT_SELECTED;
     rfid_disable_rx_tx_tag();
-    uint64_t rawTag = rfid_arr_tag_to_raw_tag(currentLoc.tag);
+    uint64_t rawTag = rfid_arr_tag_to_raw_bitstream(currentLoc.keyData.rfid.id);
     rfid_enable_tx_raw_tag(rawTag);
 }
 
@@ -58,7 +58,7 @@ void transmit_loc_tag_menu_draw()
 
         posY += charHeight;
         char tagStr[17] = {0};
-        sprintf(tagStr, "0x%010llX", rfid_array_to_tag(currentLoc.tag));
+        sprintf(tagStr, "0x%010llX", currentLoc.keyData.value);
         u8g2_DrawUTF8(&u8g2, u8g2_GetDisplayWidth(&u8g2) / 2 - u8g2_GetUTF8Width(&u8g2, tagStr) / 2, posY, tagStr);
 
         posY += charHeight;

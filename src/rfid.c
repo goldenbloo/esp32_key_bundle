@@ -10,12 +10,13 @@
 #include "string.h"
 #include "macros.h"
 #include "menus.h"
+#include "littlefs_records.h"
 
 QueueHandle_t rfidInputIsrEvtQueue = NULL;
 volatile uint32_t lastIsrTime = 0;
 static manchester_t m;
-uint64_t currentTag;
-uint8_t currentTagArray[5];
+key_data_t currentKeyData;
+
 
 void rfid_deferred_task(void *arg)
 {
@@ -160,17 +161,18 @@ void manchester_read(uint8_t level, uint32_t duration)
                     uint8_t shift = (i + 1) * 5 + 1;
                     nibbles[i] = (m.tagInputBuff >> shift) & 0x0F;
                 }
-                currentTag = 0;
+                memset(&currentKeyData, 0, sizeof(currentKeyData));
                 for (uint8_t byte = 0; byte < 5; byte++)
                 {
-                    currentTagArray[byte] = (nibbles[2 * byte + 1] << 4) | (nibbles[2 * byte]);
-                    currentTag |= ((uint64_t)currentTagArray[byte] << 8 * byte);
+                    currentKeyData.rfid.id[byte] = (nibbles[2 * byte + 1] << 4) | (nibbles[2 * byte]);
+                    // currentKeyData.value |= ((uint64_t)currentTagArray[byte] << 8 * byte);
                 }   
                 char str[70];
-                ESP_LOGI("manchester", "tag:0x%010llX, buff: %s", currentTag, int64_to_char_bin(str,currentTag));
+                ESP_LOGI("manchester", "tag:0x%010llX, buff: %s", currentKeyData.value, int64_to_char_bin(str,currentKeyData.value));
                 int32_t event = EVT_KEY_SCAN_DONE;
                 xQueueSendToBack(uiEventQueue, &event, pdMS_TO_TICKS(15));
                 rfid_disable_rx_tx_tag();
+                xQueueReset(rfidInputIsrEvtQueue);
             }            
         }        
     }
@@ -198,7 +200,7 @@ char *int32_to_char_bin(char *str, uint32_t num) // Minumal char buffer size is 
     return str;
 }
 
-uint64_t rfid_arr_tag_to_raw_tag(uint8_t *tagArr)
+uint64_t rfid_arr_tag_to_raw_bitstream(uint8_t *tagArr)
 {
     uint64_t rawTag = 0x1FF;
     uint8_t nibbles[11]; // 10 nibbles 4 bits - data, 1 bit - parity;  last nibble 4 bits - column parity and 1 bit - stop
@@ -217,7 +219,7 @@ uint64_t rfid_arr_tag_to_raw_tag(uint8_t *tagArr)
     return rawTag;
 }
 
-void rfid_raw_tag_to_rmt(rmt_symbol_word_t *rmtArr, uint64_t rawTag)
+void rfid_array_to_rmt(rmt_symbol_word_t *rmtArr, uint64_t rawTag)
 {
     for (uint8_t i = 0; i < 64; i++)
     {
@@ -237,7 +239,7 @@ void rfid_raw_tag_to_rmt(rmt_symbol_word_t *rmtArr, uint64_t rawTag)
     }
 }
 
-void rfid_tag_to_array(uint64_t tag, uint8_t tagArr[])
+void rfid_int_to_array(uint64_t tag, uint8_t tagArr[])
 {
     for (uint8_t i = 0; i < 5; ++i) {
     tagArr[i] = (tag >> (i * 8)) & 0xFF;
@@ -290,7 +292,7 @@ void rfid_enable_tx_raw_tag(uint64_t rawTag)
     // Trying to disable RMT
     esp_err_t err = rmt_disable(rfid_tx_ch);
     // Set raw tag into rmt symbol array
-    rfid_raw_tag_to_rmt(pulse_pattern, rawTag);
+    rfid_array_to_rmt(pulse_pattern, rawTag);
     // Start RMT TX
     if (err != ESP_ERR_INVALID_STATE && err != ESP_OK)
         ESP_LOGE(TAG, "Error occurred: %s (0x%x)", esp_err_to_name(err), err);

@@ -110,7 +110,8 @@ bool read_all_locations(void)
     location_t loc;    
     while (fread(&loc, sizeof(location_t), 1, f) == 1) 
     {
-        ESP_LOGI(TAG, "ID=%ld\tName=%s\ttag=0x%02x%02x%02x%02x%02x", loc.id, loc.name, loc.tag[4], loc.tag[3], loc.tag[2], loc.tag[1], loc.tag[0]);
+        ESP_LOGI(TAG, "ID=%ld\tName=%s\ttag=0x%02x%02x%02x%02x%02x", loc.id, loc.name, loc.keyData.rfid.id[4], 
+            loc.keyData.rfid.id[3], loc.keyData.rfid.id[2], loc.keyData.rfid.id[1], loc.keyData.rfid.id[0]);
         for (int i = 0; i < BSSID_MAX; i++)
         {
             if (memcmp(loc.bssids[i], zero_bssid, sizeof(zero_bssid) != 0))

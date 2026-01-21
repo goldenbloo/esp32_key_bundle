@@ -52,7 +52,7 @@ menu_t* update_tag_menu_handle(ui_event_e event)
             {
             case SAVE_OPTION:
 
-                memcpy(currentLoc.tag, currentTagArray, sizeof(currentLoc.tag));
+                memcpy(&currentLoc.keyData.value, &currentKeyData.value, sizeof(currentLoc.keyData));
                 if (write_location(&currentLoc))
                     updateTagMenu.status = EVT_SAVE_SUCCESS;
                 else

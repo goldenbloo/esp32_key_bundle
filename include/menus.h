@@ -3,6 +3,7 @@
 #include "esp_timer.h"
 #include "driver/rmt_tx.h"
 #include "esp_wifi.h"
+#include "littlefs_records.h"
 #include "bitmaps.h"
 #include "u8g2.h"
 #define MAX_SIZE 10
@@ -153,8 +154,7 @@ extern ui_event_e display_delay_cb_arg;
 extern QueueHandle_t uiEventQueue, modeSwitchQueue;
 // extern SSD1306_t* devPtr;
 extern SemaphoreHandle_t scanSem, scanDoneSem, rfidDoneSem, scrollDeleteSem, drawMutex;
-extern uint64_t currentTag;
-extern uint8_t currentTagArray[5];
+extern key_data_t currentKeyData;
 extern rmt_channel_handle_t rfid_tx_ch;
 extern rmt_encoder_handle_t copy_enc;
 extern rmt_transmit_config_t rfid_tx_config;

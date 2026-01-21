@@ -33,12 +33,12 @@ void manchester_read(uint8_t level, uint32_t duration);
 char* int64_to_char_bin(char* str, uint64_t num);
 char *int32_to_char_bin(char *str, uint32_t num);
 void rfid_read_isr_handler(void *arg);
-uint64_t rfid_arr_tag_to_raw_tag(uint8_t *tagArr);
-// void rfid_raw_tag_to_rmt(rmt_symbol_word_t *rmtArr, uint64_t rawTag);
+uint64_t rfid_arr_tag_to_raw_bitstream(uint8_t *tagArr);
+// void rfid_array_to_rmt(rmt_symbol_word_t *rmtArr, uint64_t rawTag);
 void rfid_enable_rx_tag();
 void rfid_enable_tx_raw_tag(uint64_t tag);
 void rfid_disable_rx_tx_tag();
-void rfid_tag_to_array(uint64_t tag, uint8_t tagArr[]);
+void rfid_int_to_array(uint64_t tag, uint8_t tagArr[]);
 uint64_t rfid_array_to_tag(uint8_t tagArr[]);
 
 void rfid_deferred_task(void *arg);

@@ -178,13 +178,13 @@ void transmit_metakom_k2()
         ESP_LOGE(TAG, "Error occurred: %s (0x%x)", esp_err_to_name(err), err);
 
     static rmt_symbol_word_t pattern[36];
-    uint32_t halfPeriod = 100;
+    uint32_t period = 200;
     uint8_t startWord = 2;
     uint32_t data = keyId;
-    rmt_symbol_word_t bit_0 = {{halfPeriod * 0.8, 0, halfPeriod * 1.2, 1}};
-    rmt_symbol_word_t bit_1 = {{halfPeriod * 1.2, 0, halfPeriod * 0.8, 1}};
+    rmt_symbol_word_t bit_0 = {{period * 0.4, 0, period * 0.6, 1}};
+    rmt_symbol_word_t bit_1 = {{period * 0.6, 0, period * 0.4, 1}};
 
-    pattern[0] = (rmt_symbol_word_t){{halfPeriod, 1, halfPeriod, 1}}; // Sync bit and start word
+    pattern[0] = (rmt_symbol_word_t){{period / 2, 1, period / 2, 1}}; // Sync bit and start word
     for (uint8_t i = 1; i < 4; i++)
     {
         pattern[i] = startWord & 1 ? bit_1 : bit_0;

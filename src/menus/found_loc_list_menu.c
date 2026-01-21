@@ -36,7 +36,7 @@ void found_loc_list_menu_enter()
 
     for (uint8_t i = 0; i < bestLocsNum; i++)
     {
-        ESP_LOGI(TAG, "Id: %ld\nName: %s\nTag: 0x%010llX", bestLocs[i].id, bestLocs[i].name, rfid_array_to_tag(bestLocs[i].tag));
+        ESP_LOGI(TAG, "Id: %ld\nName: %s\nTag: 0x%010llX", bestLocs[i].id, bestLocs[i].name, bestLocs[i].keyData.value);
         locNameList[i] = bestLocs[i].name;
     }   
 
