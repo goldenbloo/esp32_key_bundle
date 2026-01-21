@@ -10,6 +10,7 @@
 #include "macros.h"
 #include "rfid.h"
 #include "touch.h"
+#include "littlefs_records.h"
 
 #define MAX_SUM  200
 #define MAX_SKIP 200
@@ -20,6 +21,8 @@ TaskHandle_t kt2ReadTaskHandler = NULL;
 static volatile uint32_t lastIsrTime = 0;
 static kt1233_decoder_t kt2;
 uint32_t keyId;
+extern key_data_t currentKeyData;
+extern uint16_t currentKeyType;
 
 
 void IRAM_ATTR comp_rx_isr_handler(void *arg)

@@ -1,39 +1,11 @@
 #ifndef LFS_RECORDS_H
 #define LFS_RECORDS_H
 
+#include "types.h"
+#include "esp_wifi_types.h"
 
-
-
-typedef union {
-    uint64_t value;          
-    uint8_t bytes[8];
-    struct { uint64_t rom; } ds1990;
-    struct { uint8_t  id[5]; } rfid;
-    struct { uint32_t id; } kt2;
-} key_data_t;
-
-typedef enum
-{
-  KEY_TYPE_NONE,
-  KEY_TYPE_RFID,
-  KEY_TYPE_KT2,
-  KEY_TYPE_DALLAS,
-
-} key_type_enum;
-
-typedef struct __attribute__((packed))
-{
-  key_data_t keyData;
-  int32_t id;  
-  uint16_t keyType;
-  uint8_t bssids[5][6];
-  int8_t rssis[5];
-  char name[FIELD_SIZE];
-} location_t;
-
-
-
-
+extern key_data_t currentKeyData;
+extern uint16_t currentKeyType;
 
 void littlefs_init();
 

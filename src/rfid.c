@@ -15,7 +15,7 @@
 QueueHandle_t rfidInputIsrEvtQueue = NULL;
 volatile uint32_t lastIsrTime = 0;
 static manchester_t m;
-key_data_t currentKeyData;
+
 
 
 void rfid_deferred_task(void *arg)

@@ -38,3 +38,5 @@
 #define LOC_NUM_MAX         5
 #define LOC_SEARCH_MAX      5
 #define LOC_MATCH_MAX       3
+
+#define MENU_STACK_MAX_SIZE 10

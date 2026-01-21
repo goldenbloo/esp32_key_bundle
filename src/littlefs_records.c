@@ -8,6 +8,8 @@
 
 static const char *TAG = "littlefs_records";
 const uint8_t zero_bssid[6] = {0};
+key_data_t currentKeyData;
+uint16_t currentKeyType;
 
 void littlefs_init()
 {
@@ -110,8 +112,8 @@ bool read_all_locations(void)
     location_t loc;    
     while (fread(&loc, sizeof(location_t), 1, f) == 1) 
     {
-        ESP_LOGI(TAG, "ID=%ld\tName=%s\ttag=0x%02x%02x%02x%02x%02x", loc.id, loc.name, loc.keyData.rfid.id[4], 
-            loc.keyData.rfid.id[3], loc.keyData.rfid.id[2], loc.keyData.rfid.id[1], loc.keyData.rfid.id[0]);
+        ESP_LOGI(TAG, "ID=%ld\tName=%s\ttag=0x%02x%02x%02x%02x%02x, type=%d", loc.id, loc.name, loc.keyData.rfid.id[4], 
+            loc.keyData.rfid.id[3], loc.keyData.rfid.id[2], loc.keyData.rfid.id[1], loc.keyData.rfid.id[0], loc.keyType);
         for (int i = 0; i < BSSID_MAX; i++)
         {
             if (memcmp(loc.bssids[i], zero_bssid, sizeof(zero_bssid) != 0))
@@ -121,7 +123,7 @@ bool read_all_locations(void)
                 loc.bssids[i][4], loc.bssids[i][5],
                      loc.rssis[i]);
         }
-        // you could dump BSSIDs/RSSIs here
+        
     }
     fclose(f);
     return true;

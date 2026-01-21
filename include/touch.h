@@ -1,46 +1,12 @@
 #ifndef TOUCH_H
 #define TOUCH_H
 #include "freertos/FreeRTOS.h"
+#include "types.h"
 
 extern QueueHandle_t touchInputIsrEvtQueue, printQueue;
 extern rmt_channel_handle_t touch_tx_ch;
 extern rmt_encoder_handle_t copy_enc;
 extern rmt_transmit_config_t touch_tx_config;
-
-typedef struct {
-    bool level;    
-    uint32_t duration;
-} touch_input_evt;
-
-typedef struct
-{
-   uint32_t timeAvg;
-   uint32_t tick;
-   uint8_t evt;
-   uint8_t bitCnt;
-   uint32_t data;
-   uint32_t duration;
-} touch_print_t;
-
-typedef struct {    
-    uint32_t sumCnt;
-    uint32_t timeAvg;
-    uint32_t timeSum;
-    uint32_t skipCnt;
-    uint32_t timeLow;
-    uint32_t timeHigh;
-   
-    uint8_t bitCnt;
-    uint8_t startWordCnt;
-    uint8_t startWord;
-    uint8_t parity;
-
-    bool timeAvgCalculated;
-    bool syncBitFound;
-    bool startOk;
-} kt1233_decoder_t;
-
-
 
 void read_metakom_kt2();
 void comp_rx_isr_handler(void *arg);

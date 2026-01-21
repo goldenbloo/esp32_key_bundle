@@ -3,23 +3,11 @@
 #include "freertos/FreeRTOS.h"
 #include "driver/rmt_tx.h"
 #include "macros.h"
+#include "types.h"
 
 extern QueueHandle_t rfidInputIsrEvtQueue;
 
-typedef struct {
-    bool level;
-    uint32_t duration;  // Optional: store a duration if needed
-} rfid_input_event_t;
 
-typedef struct
-{
-  bool isSynced;
-  bool currentBit;
-  bool lastBit;
-  bool checkNextEdge; 
-  bool bitIsReady;
-  uint64_t tagInputBuff;  
-} manchester_t;
 
 /*
  * checkNextEdge indicates that the *next* GPIO edge
