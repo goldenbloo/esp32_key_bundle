@@ -17,7 +17,6 @@ volatile uint32_t lastIsrTime = 0;
 static manchester_t m;
 
 
-
 void rfid_deferred_task(void *arg)
 {
     rfid_input_event_t evt;
@@ -30,7 +29,6 @@ void rfid_deferred_task(void *arg)
         }
     }
 }
-
 
 void inline syncErrorFunc(manchester_t *m)
 {
@@ -160,18 +158,16 @@ void manchester_read(uint8_t level, uint32_t duration)
                 {
                     uint8_t shift = (i + 1) * 5 + 1;
                     nibbles[i] = (m.tagInputBuff >> shift) & 0x0F;
-                }
+                }                
                 memset(&currentKeyData, 0, sizeof(currentKeyData));
-                for (uint8_t byte = 0; byte < 5; byte++)
-                {
+                for (uint8_t byte = 0; byte < 5; byte++)                
                     currentKeyData.rfid.id[byte] = (nibbles[2 * byte + 1] << 4) | (nibbles[2 * byte]);
-                    // currentKeyData.value |= ((uint64_t)currentTagArray[byte] << 8 * byte);
-                }   
+                currentKeyType = KEY_TYPE_RFID; 
                 char str[70];
                 ESP_LOGI("manchester", "tag:0x%010llX, buff: %s", currentKeyData.value, int64_to_char_bin(str,currentKeyData.value));
-                int32_t event = EVT_KEY_SCAN_DONE;
+                ui_event_e event = EVT_KEY_SCAN_DONE;
                 xQueueSendToBack(uiEventQueue, &event, pdMS_TO_TICKS(15));
-                rfid_disable_rx_tx_tag();
+                rfid_disable_rx_tx();
                 xQueueReset(rfidInputIsrEvtQueue);
             }            
         }        
@@ -302,7 +298,7 @@ void rfid_enable_tx_raw_tag(uint64_t rawTag)
     gpio_set_level(LED_PIN, 1);
 }
 
-void rfid_disable_rx_tx_tag()
+void rfid_disable_rx_tx()
 {
     // const char* TAG = "diasable tx tag";
     ESP_ERROR_CHECK(gpio_intr_disable(RFID_RX));

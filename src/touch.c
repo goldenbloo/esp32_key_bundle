@@ -11,19 +11,17 @@
 #include "rfid.h"
 #include "touch.h"
 #include "littlefs_records.h"
+#include "owi.h"
 
 #define MAX_SUM  200
 #define MAX_SKIP 200
 
 
 QueueHandle_t touchInputIsrEvtQueue = NULL;
-TaskHandle_t kt2ReadTaskHandler = NULL;
+// TaskHandle_t kt2ReadTaskHandler = NULL;
 static volatile uint32_t lastIsrTime = 0;
 static kt1233_decoder_t kt2;
 uint32_t keyId;
-extern key_data_t currentKeyData;
-extern uint16_t currentKeyType;
-
 
 void IRAM_ATTR comp_rx_isr_handler(void *arg)
 {
@@ -41,25 +39,6 @@ void IRAM_ATTR comp_rx_isr_handler(void *arg)
     xQueueSendToBackFromISR(touchInputIsrEvtQueue, &evt, &xHigherPriorityTaskWoken);
     if (xHigherPriorityTaskWoken == pdTRUE)
         portYIELD_FROM_ISR();
-}
-
-void read_metakom_kt2()
-{
-    const char* TAG = "tx_meta";
-
-    uint8_t printEvt = 4;
-    xQueueSend(printQueue, &printEvt, 0);
-    
-    memset(&kt2, 0, sizeof(kt2)); // Reset decoder
-    gpio_set_level(PULLUP_PIN, 0); // Enable pullup
-    gpio_set_level(METAKOM_TX, 0);
-    esp_err_t err = rmt_disable(touch_tx_ch);
-    if (err != ESP_ERR_INVALID_STATE && err != ESP_OK)
-        ESP_LOGE(TAG, "Error occurred: %s (0x%x)", esp_err_to_name(err), err);
-    
-    if (kt2ReadTaskHandler == NULL)
-        xTaskCreate(touch_isr_deferred_task, "touch_isr_deferred_task", 2048, NULL, 4, &kt2ReadTaskHandler);
-    gpio_set_intr_type(COMP_RX, GPIO_INTR_ANYEDGE);
 }
 
 void touch_isr_deferred_task(void *args)
@@ -156,18 +135,45 @@ void kt2_read_edge(uint8_t level, uint32_t duration, kt1233_decoder_t* d)
             }
             else if (d->bitCnt == 32)
             {
-                touch_print_t printEvt = {
-                    .evt = 8,                    
-                    .bitCnt = d->bitCnt,
-                    .data = keyId,
-                };
-                xQueueSend(printQueue, &printEvt, 0);
-                gpio_set_intr_type(COMP_RX, GPIO_INTR_DISABLE);
-                kt2ReadTaskHandler = NULL;
-                vTaskDelete(NULL);
+                // touch_print_t printEvt = {
+                //     .evt = 8,                    
+                //     .bitCnt = d->bitCnt,
+                //     .data = keyId,
+                // };
+                char str[35];
+                printf("Metakom Data %lu, %s\n", keyId, int32_to_char_bin(str, keyId));
+
+                memset(&currentKeyData.value, 0, sizeof(currentKeyData.value)); // Reset key value
+                currentKeyData.kt2.id = keyId;
+                currentKeyType = KEY_TYPE_KT2;
+                ui_event_e event = EVT_KEY_SCAN_DONE;
+                xQueueSendToBack(uiEventQueue, &event, pdMS_TO_TICKS(15));
+                // xQueueSend(printQueue, &printEvt, 0);
+                gpio_intr_disable(COMP_RX);                
+                
             }
         }
     }
+}
+
+void touch_rx_enable()
+{
+    const char* TAG = "tx_meta";
+    // uint8_t printEvt = 4;
+    // xQueueSend(printQueue, &printEvt, 0);    
+    memset(&kt2, 0, sizeof(kt2)); // Reset decoder
+    gpio_set_level(PULLUP_PIN, 0); // Enable pullup
+    gpio_set_level(METAKOM_TX, 0);
+    esp_err_t err = rmt_disable(touch_tx_ch);
+    if (err != ESP_ERR_INVALID_STATE && err != ESP_OK)
+        ESP_LOGE(TAG, "Error occurred: %s (0x%x)", esp_err_to_name(err), err);
+    gpio_intr_enable(COMP_RX);
+}
+
+void touch_rx_disable()
+{
+    gpio_intr_disable(COMP_RX);
+    gpio_set_level(PULLUP_PIN, 1); // Disable pullip PNP
 }
 
 void transmit_metakom_k2()
@@ -200,6 +206,27 @@ void transmit_metakom_k2()
         data >>= 1;
     }
 
-    ESP_ERROR_CHECK(rmt_transmit(touch_tx_ch, copy_enc, pattern, sizeof(pattern), &touch_tx_config));
-    
+    ESP_ERROR_CHECK(rmt_transmit(touch_tx_ch, copy_enc, pattern, sizeof(pattern), &touch_tx_config));    
+}
+
+void touch_read_task(void* args)
+{
+    while (1) 
+    {
+        gpio_intr_disable(COMP_RX);
+
+        if (owi_read_rom(currentKeyData.bytes))
+        {
+            currentKeyType = KEY_TYPE_DALLAS;
+            ui_event_e event = EVT_KEY_SCAN_DONE;
+            xQueueSendToBack(uiEventQueue, &event, pdMS_TO_TICKS(15));
+        }
+        else
+        {
+            gpio_intr_enable(COMP_RX);
+            xQueueReset(touchInputIsrEvtQueue);
+
+        }
+        vTaskDelay(pdMS_TO_TICKS(200));
+    }
 }

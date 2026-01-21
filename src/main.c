@@ -57,32 +57,6 @@ esp_timer_handle_t confirmation_timer_handle, display_delay_timer_handle, keypad
 ui_event_e display_delay_cb_arg;
 
 
-
-void button_interrupt_handler(void *arg)
-{
-    static uint32_t lastTick = 0;
-    gpio_intr_disable(BUTTON_PIN);
-    uint32_t current_tick = esp_cpu_get_cycle_count();
-    
-    if ((current_tick - lastTick)  < 250 * CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ * 1000 )
-    {
-        gpio_intr_enable(BUTTON_PIN);
-        return;
-    }    
-    lastTick = current_tick;
-
-    gpio_intr_enable(BUTTON_PIN);
-    BaseType_t woken = pdFALSE;
-    // xSemaphoreGiveFromISR(modeSwitchSem, &woken);
-    xSemaphoreGiveFromISR(scanSem, &woken);
-    if (woken == pdTRUE) {
-        // If giving the semaphore woke a higher‐priority task, yield now
-        portYIELD_FROM_ISR();
-    }
-    
-}
-
-
 static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data)
 {
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_SCAN_DONE)
@@ -123,7 +97,6 @@ void wifi_init()
     // 6. Start Wi-Fi
     esp_wifi_start();
 }
-
 
 
 void display_init() 
@@ -167,17 +140,6 @@ void gpio_pins_init()
     ESP_ERROR_CHECK(gpio_install_isr_service(ESP_INTR_FLAG_DEFAULT));
     ESP_ERROR_CHECK(gpio_isr_handler_add(RFID_RX, rfid_read_isr_handler, (void *)RFID_RX));
 
-    // Button GPIO interrupt setup
-    gpio_config_t buttonState_config = {
-        .intr_type = GPIO_INTR_POSEDGE,
-        .mode = GPIO_MODE_INPUT,
-        .pin_bit_mask = (1ULL << BUTTON_PIN),
-        .pull_up_en = GPIO_PULLUP_ENABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE};
-    ESP_ERROR_CHECK(gpio_config(&buttonState_config));
-    // Install GPIO ISR service and add the handler for our pin.
-    ESP_ERROR_CHECK(gpio_isr_handler_add(BUTTON_PIN, button_interrupt_handler, (void *)BUTTON_PIN));
-
     // LED pin setup
     gpio_config_t led_io = {
         .mode = GPIO_MODE_OUTPUT,
@@ -205,7 +167,7 @@ void gpio_pins_init()
 
     // Touch memory pins
     // Pullup pin
-    gpio_set_level(PULLUP_PIN, 0); // NPN pullup enabled; TO BE DISABLED AFTER TESTING
+    gpio_set_level(PULLUP_PIN, 0); // PNP pullup enabled; TO BE DISABLED AFTER TESTING
     gpio_config_t touch_pullup_config = {
         .mode = GPIO_MODE_OUTPUT,
         .pin_bit_mask = (1ULL << PULLUP_PIN),
@@ -240,14 +202,11 @@ void gpio_pins_init()
         .pin_bit_mask = (1ULL << COMP_RX),
         .pull_up_en = GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type = GPIO_INTR_DISABLE,};
+        .intr_type = GPIO_INTR_ANYEDGE,};
     ESP_ERROR_CHECK(gpio_config(&comp_rx_config));
     ESP_ERROR_CHECK(gpio_isr_handler_add(COMP_RX, comp_rx_isr_handler, (void *)COMP_RX));
-    gpio_set_intr_type(COMP_RX, GPIO_INTR_DISABLE);
-
+    gpio_intr_disable(COMP_RX);
 }
-
-
 
 void uart_event_task(void *pvParameters)
 {
@@ -532,7 +491,8 @@ void app_main(void)
 //-----------------------------------------------------------------------------
     // Create a task to process the deferred events.
     xTaskCreate(rfid_deferred_task, "rfid_deferred_task", 2048, NULL, 4, NULL);    
-    xTaskCreate(print_deferred_task, "print_deferred_task", 2048, NULL, 3, NULL);      
+    // xTaskCreate(print_deferred_task, "print_deferred_task", 2048, NULL, 3, NULL);
+    xTaskCreate(touch_isr_deferred_task, "touch_isr_deferred_task", 2048, NULL, 4, NULL);    
 //-----------------------------------------------------------------------------
     // Create semaphores
     // modeSwitchSem = xSemaphoreCreateBinary();

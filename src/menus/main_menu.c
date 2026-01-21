@@ -18,7 +18,7 @@ char *mainMenuEntries[] = {
     "Dump records",                     // 2
     "Search location",                  // 3
     "Delete all tags i mean ALL TAGS",  // 4
-    "Read Metakom",                     // 5
+    "Read DS18B20",                     // 5
     "Trasnmit Metakom",                 // 6
 };
 menu_listbox_t mainMenuListBox = {
@@ -72,11 +72,12 @@ menu_t *main_menu_handle(ui_event_e event)
             break;
         
         case 5:
-            read_metakom_kt2();
+            read_ds18b20();
+            // touch_rx_enable();
             break;
         
-            case 6:
-            // read_ds18b20();
+        case 6:
+            
             transmit_metakom_k2();
             break;
 

@@ -102,7 +102,7 @@ void transmit_menu_exit()
         vTaskDelete(rfidAutoTxHandler);
         rfidAutoTxHandler = NULL;
     }
-    rfid_disable_rx_tx_tag();
+    rfid_disable_rx_tx();
     esp_timer_stop(display_delay_timer_handle);
 }
 

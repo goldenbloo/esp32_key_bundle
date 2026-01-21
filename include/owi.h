@@ -4,7 +4,9 @@
 
 extern QueueHandle_t touchInputIsrEvtQueue, printQueue;
 
-void read_ds18b20();
+uint64_t read_ds18b20();
+bool owi_reset();
+bool owi_read_rom(uint8_t *rom_buffer);
 
 
 

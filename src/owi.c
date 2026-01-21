@@ -68,6 +68,41 @@ uint8_t owi_read_byte()
     return data;
 }
 
+uint8_t owi_crc8(const uint8_t *data, uint8_t len)
+{
+    uint8_t crc = 0;
+
+    for (uint8_t i = 0; i < len; i++)
+    {
+        uint8_t inbyte = data[i];
+        for (uint8_t j = 0; j < 8; j++)
+        {
+            uint8_t mix = (crc ^ inbyte) & 0x01;
+            crc >>= 1;
+            if (mix)            
+                crc ^= 0x8C; // Inverted polynomial for LSB-first            
+            inbyte >>= 1;
+        }
+    }
+    return crc;
+}
+
+bool owi_read_rom(uint8_t *rom_buffer) {
+    if (!owi_reset()) 
+        return false; // No key present    
+
+    owi_write_byte(0x33); // Read ROM command
+    for (int i = 0; i < 8; i++) 
+        rom_buffer[i] = owi_read_byte();
+    
+    // Verify CRC
+    if (owi_crc8(rom_buffer, 7) != rom_buffer[7]) 
+        return false; // Checksum failed
+    
+
+    return true; 
+}
+
 // State variables for the search
 static uint8_t currentROM[8];
 static int last_discrepancy;
@@ -163,29 +198,10 @@ bool owi_search(uint8_t *newAddr)
     return search_result;
 }
 
-uint8_t owi_crc8(const uint8_t *data, uint8_t len)
-{
-    uint8_t crc = 0;
-
-    for (uint8_t i = 0; i < len; i++)
-    {
-        uint8_t inbyte = data[i];
-        for (uint8_t j = 0; j < 8; j++)
-        {
-            uint8_t mix = (crc ^ inbyte) & 0x01;
-            crc >>= 1;
-            if (mix)            
-                crc ^= 0x8C; // Inverted polynomial for LSB-first            
-            inbyte >>= 1;
-        }
-    }
-    return crc;
-}
-
-void read_ds18b20()
+uint64_t read_ds18b20()
 {
     uint8_t rom[8];
-    uint64_t rom64 = 0;
+    uint64_t rom64 = -1;
     uint8_t scratchpad[9];
     if (owi_reset())
         printf("DS18B20 present\n");
@@ -215,7 +231,7 @@ void read_ds18b20()
         if (owi_crc8(scratchpad, 8) != scratchpad[8])
         {
             printf("Scratchpad CRC failed\n");
-            return;
+            return rom64;
         }
         int16_t raw = (scratchpad[1] << 8) | scratchpad[0];
         printf("Temp: %.2f°C\n", raw/16.0);
@@ -224,6 +240,7 @@ void read_ds18b20()
     {
         printf("DS18B20 not found!\n");
     }  
+    return rom64;
 
 }
 

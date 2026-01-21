@@ -25,14 +25,14 @@ void transmit_loc_tag_menu_enter()
 {   
     transmitLocTagMenu.status = EVT_ON_ENTRY;
     transmitLocTagMenu.selectedOption = NOT_SELECTED;
-    rfid_disable_rx_tx_tag();
+    rfid_disable_rx_tx();
     uint64_t rawTag = rfid_arr_tag_to_raw_bitstream(currentLoc.keyData.rfid.id);
     rfid_enable_tx_raw_tag(rawTag);
 }
 
 void transmit_loc_tag_menu_exit()
 {
-    rfid_disable_rx_tx_tag();
+    rfid_disable_rx_tx();
 }
 
 menu_t* transmit_loc_tag_menu_handle(ui_event_e event)
