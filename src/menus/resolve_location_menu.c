@@ -59,6 +59,7 @@ menu_t* resolve_location_menu_handle(ui_event_e event)
             {
             case OVERWRITE_OPTION:
                 memcpy(&bestLocs[0].keyData.value, &currentKeyData.value, sizeof(currentKeyData.value));
+                bestLocs[0].keyType = currentKeyType;
                 write_location(&bestLocs[0]);
                 scroll_task_stop();
                 resolveLocationMenu.status = EVT_OVERWRITE_TAG;                

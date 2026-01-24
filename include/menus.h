@@ -106,6 +106,10 @@ menu_t* transmit_loc_tag_menu_handle(ui_event_e event);
 void transmit_loc_tag_menu_exit();
 void transmit_loc_tag_menu_draw();
 
+void loc_info_menu_enter();
+menu_t* loc_info_menu_handle(ui_event_e event);
+void loc_info_menu_draw();
+
 //=======================================================================================
 extern menu_t mainMenu;
 extern menu_t scanTagMenu;
@@ -122,7 +126,7 @@ extern menu_t updateWifiMenu;
 extern menu_t updateTagMenu;
 extern menu_t deleteLocMenu;
 extern menu_t transmitLocTagMenu;
-
+extern menu_t locInfoMenu;
 
 
 #endif

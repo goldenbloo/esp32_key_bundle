@@ -3,7 +3,6 @@
 #define LED_PIN             2
 #define RFID_CLK_DATA       18
 #define COIL_VCC_PIN        5
-#define BUTTON_PIN          23
 #define CONFIG_SDA_GPIO     21
 #define CONFIG_SCL_GPIO     22
 
@@ -16,6 +15,7 @@
 #define COMP_RX             35
 #define OWI_TX              33
 #define PULLUP_PIN          25
+#define KEY_LINE            23
  
 
 #define PERIOD              512

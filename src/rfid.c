@@ -162,7 +162,7 @@ void manchester_read(uint8_t level, uint32_t duration)
                 memset(&currentKeyData, 0, sizeof(currentKeyData));
                 for (uint8_t byte = 0; byte < 5; byte++)                
                     currentKeyData.rfid.id[byte] = (nibbles[2 * byte + 1] << 4) | (nibbles[2 * byte]);
-                currentKeyType = KEY_TYPE_RFID; 
+                currentKeyType = KEY_TYPE_EM4100_MANCHESTER_64; 
                 char str[70];
                 ESP_LOGI("manchester", "tag:0x%010llX, buff: %s", currentKeyData.value, int64_to_char_bin(str,currentKeyData.value));
                 ui_event_e event = EVT_KEY_SCAN_DONE;

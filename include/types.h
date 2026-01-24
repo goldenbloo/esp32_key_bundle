@@ -20,6 +20,7 @@ typedef enum
     LOC_TAG_UPDATE_MENU,
     LOC_DELETE_MENU,
     LOC_TRANSMIT_TAG,
+    LOC_INFO_MENU,
     
 
 } menu_e;
@@ -76,11 +77,17 @@ typedef enum
 typedef enum
 {
   KEY_TYPE_NONE,
-  KEY_TYPE_RFID,
+  KEY_TYPE_EM4100_MANCHESTER_64,
+  KEY_TYPE_EM4100_MANCHESTER_32,
+  KEY_TYPE_EM4100_MANCHESTER_16,
+  KEY_TYPE_EM4100_BIPHASE_64,
+  KEY_TYPE_EM4100_BIPHASE_32,
+  KEY_TYPE_EM4100_BIPHASE_16,
   KEY_TYPE_KT2,
-  KEY_TYPE_DALLAS,
+  KEY_TYPE_IBUTTON,
 
 } key_type_enum;
+
 
 //-------------------Structs---------------------------------------------------
 // RFID------------------------------------------

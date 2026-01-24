@@ -24,15 +24,14 @@
 #include "u8g2.h"
 #include "u8g2_esp32_hal.h"
 #include "touch.h"
-
-
 #define ESP_INTR_FLAG_DEFAULT   0
-
-
 #define DATA_FILE_PATH "/littlefs/locations.dat"
 
 
-static const char *TAG = "ISR_offload";
+
+
+
+static const char *TAG = "main";
 esp_err_t err;
 
 rmt_channel_handle_t rfid_tx_ch = NULL, touch_tx_ch = NULL;
@@ -362,42 +361,31 @@ void print_deferred_task(void* args)
             {
             case 0:
                 printf("Time: %lu\tSync Bit Found\n", evt.tick);
-                break;
-            
+                break;            
             case 1:
                 printf("Time: %lu\tStart word OK\n", evt.tick);
-                break;
-            
+                break;            
             case 2:
                 printf("Time: %lu\tStart word BAD\n", evt.tick);
-                break;
-                        
-            case 3:
-                            
+                break;                        
+            case 3:                            
                 printf("Time: %lu\tParity BAD\nbitCnt: %d\tdata: %s\n", evt.tick, evt.bitCnt, int32_to_char_bin(str, evt.data));
-                break;
-            
+                break;            
             case 4:
-                printf("Start Metakom Read");
-                
-                break;
-            
+                printf("Start Metakom Read");                
+                break;            
             case 5:
                 printf("timeAvg: %lu\n", evt.timeAvg);
                 break;
-
             case 6:                                
                 printf("Time: %lu\tbitCnt: %d\tdata: %s\t dur: %lu\n", evt.tick, evt.bitCnt, int32_to_char_bin(str, evt.data), evt.duration);
                 break;
-
             case 7:
                 printf("Time: %lu\tstartCnt: %d\tstartWord: %s\n", evt.tick, evt.bitCnt, int32_to_char_bin(str, evt.data));
                 break;
-
             case 8:
                 printf("Metakom Data %lu, %s\n", evt.data, int32_to_char_bin(str, evt.data));
                 break;
-
             default:
                 break;
             }

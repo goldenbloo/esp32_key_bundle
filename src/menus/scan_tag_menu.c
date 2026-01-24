@@ -73,7 +73,11 @@ void scan_tag_menu_exit()
     rfid_disable_rx_tx();
     touch_rx_disable();
     esp_timer_stop(display_delay_timer_handle);
-
+    if (touchReadTask)
+    {
+        vTaskDelete(touchReadTask);
+        touchReadTask = NULL;
+    }
 }
 
 void scan_tag_menu_draw()
@@ -93,21 +97,19 @@ void scan_tag_menu_draw()
     {
         char keyStr[17] = {0};
         const char* formatStr = "0x%010llX";
-        const char* typeStr = "Unknown"; // Default
+        const char* typeStr = get_key_type_string(currentKeyType); // Default
         switch (currentKeyType){
-        case KEY_TYPE_RFID:
-            typeStr = "RFID"; 
+        case KEY_TYPE_EM4100_MANCHESTER_64:            
             formatStr = "0x%010llX";
             break;
         case KEY_TYPE_KT2:
-            typeStr = "Metakom"; 
              formatStr = "0x%08llX";
             break;
-        case KEY_TYPE_DALLAS:
-            typeStr = "Dallas"; 
+        case KEY_TYPE_IBUTTON:            
             formatStr = "0x%016llX";
             break;
-        default: break;
+        default:            
+         break;
         }
 
         sprintf(keyStr, formatStr, currentKeyData.value);

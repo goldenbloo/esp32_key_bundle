@@ -380,3 +380,24 @@ bool delete_location(int32_t id_to_delete)
         return false;
     }
 }
+
+const char* get_key_type_string(key_type_enum type)
+{
+    static const char* keyTypeStrings[] = {
+        "Unknown",
+        "RFID Manchester 64",
+        "RFID Manchester 32",
+        "RFID Manchester 16",
+        "RFID Biphase 64",
+        "RFID Biphase 32",
+        "RFID Biphase 16",
+        "Metakom",
+        "iButton",
+    };
+    uint8_t num_strings = sizeof(keyTypeStrings) / sizeof(keyTypeStrings[0]);
+
+    if (type < 0 || type >= num_strings)
+        return keyTypeStrings[0];    
+
+    return keyTypeStrings[type];
+}

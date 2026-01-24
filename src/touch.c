@@ -217,7 +217,7 @@ void touch_read_task(void* args)
 
         if (owi_read_rom(currentKeyData.bytes))
         {
-            currentKeyType = KEY_TYPE_DALLAS;
+            currentKeyType = KEY_TYPE_IBUTTON;
             ui_event_e event = EVT_KEY_SCAN_DONE;
             xQueueSendToBack(uiEventQueue, &event, pdMS_TO_TICKS(15));
         }

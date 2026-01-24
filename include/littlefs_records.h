@@ -19,5 +19,6 @@ void clear_all_locations();
 bool write_location(const location_t *loc);
 int32_t find_locations_by_name(const char *substr, location_t results[], int max_results);
 bool delete_location(int32_t id_to_delete);
+const char* get_key_type_string(key_type_enum type);
 
 #endif

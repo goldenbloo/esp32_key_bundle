@@ -11,7 +11,12 @@
 #include "littlefs_records.h"
 #include "globals_menus.h"
 
-char *options[] = {"Transmit tag", "Rename location", "Update APs", "Update tag", "Delete location"};
+char *options[] = { "Location info",
+                    "Transmit key", 
+                    "Rename location", 
+                    "Update APs", 
+                    "Update key",
+                    "Delete location"};
 menu_listbox_t locOptionsMenuListBox = {        
     .selectedRow = 0,
     .list = options,
@@ -46,24 +51,23 @@ menu_t *loc_options_menu_handle(ui_event_e event)
         switch (locOptionsMenu.listBox->selectedRow)
         {
         case 0:
+            return &locInfoMenu;
+            break;
+        case 1:
             return &transmitLocTagMenu;
             break;
-
-        case 1:
+        case 2:
             return &changeLocNameMenu;
             break;
-
-        case 2:
+        case 3:
             scanWifiMenu.nextMenu = &updateWifiMenu;
             return &scanWifiMenu;
             break;
-
-        case 3:
+        case 4:
             scanTagMenu.nextMenu = &updateTagMenu;
             return &scanTagMenu;
             break;
-
-        case 4:
+        case 5:
             return &deleteLocMenu;
             break;
 
