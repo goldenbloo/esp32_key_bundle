@@ -24,9 +24,9 @@
 #include "u8g2.h"
 #include "u8g2_esp32_hal.h"
 #include "touch.h"
+#include "owi.h"
 #define ESP_INTR_FLAG_DEFAULT   0
 #define DATA_FILE_PATH "/littlefs/locations.dat"
-
 
 
 
@@ -34,24 +34,30 @@
 static const char *TAG = "main";
 esp_err_t err;
 
-rmt_channel_handle_t rfid_tx_ch = NULL, touch_tx_ch = NULL;
+rmt_channel_handle_t rfid_tx_ch = NULL, metakom_tx_ch = NULL, owi_tx_ch = NULL;
 rmt_encoder_handle_t copy_enc;
-rmt_transmit_config_t rfid_tx_config  = {
-        .loop_count = -1,
-        .flags.eot_level = 0,
-        .flags.queue_nonblocking = true,
-    };    
-rmt_transmit_config_t touch_tx_config = {
+rmt_transmit_config_t rfid_tx_config = {
+    .loop_count = -1,
+    .flags.eot_level = 0,
+    .flags.queue_nonblocking = true,
+};
+rmt_transmit_config_t metakom_rmt_tx_config = {
     .loop_count = -1,
     .flags.queue_nonblocking = true,
-    .flags.eot_level = 1, // Inverted 
+    .flags.eot_level = 1, // Inverted
+};
+rmt_transmit_config_t owi_rmt_tx_config = {
+    .loop_count = 0,
+    .flags.queue_nonblocking = true,
+    .flags.eot_level = 1,  
+    
 };
 rmt_symbol_word_t pulse_pattern[RMT_SIZE];
 SemaphoreHandle_t scanSem, scanDoneSem, rfidDoneSem, scrollDeleteSem, drawMutex;
 u8g2_t u8g2;
 
 QueueHandle_t uartQueue, uiEventQueue, modeSwitchQueue, printQueue;
-TaskHandle_t uiHandlerTask = NULL, rfidAutoTxHandler = NULL;
+TaskHandle_t uiHandlerTask = NULL, rfidAutoTxHandler = NULL, MainTaskHandle = NULL;
 esp_timer_handle_t confirmation_timer_handle, display_delay_timer_handle, keypad_poll_handler;
 ui_event_e display_delay_cb_arg;
 
@@ -136,7 +142,7 @@ void gpio_pins_init()
         .pull_down_en = GPIO_PULLDOWN_DISABLE};
     ESP_ERROR_CHECK(gpio_config(&inputSingal_config));
     // Install GPIO ISR service and add the handler for our pin.
-    ESP_ERROR_CHECK(gpio_install_isr_service(ESP_INTR_FLAG_DEFAULT));
+    // ESP_ERROR_CHECK(gpio_install_isr_service(ESP_INTR_FLAG_DEFAULT));
     ESP_ERROR_CHECK(gpio_isr_handler_add(RFID_RX, rfid_read_isr_handler, (void *)RFID_RX));
 
     // LED pin setup
@@ -194,6 +200,17 @@ void gpio_pins_init()
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .intr_type = GPIO_INTR_DISABLE,};
     ESP_ERROR_CHECK(gpio_config(&owi_tx_config));
+
+    // Test 1 wire tx
+    gpio_set_level(OWI_TX_2, 0);
+    gpio_config_t owi_tx_2_config = {
+        .mode = GPIO_MODE_OUTPUT,
+        .pin_bit_mask = (1ULL << OWI_TX_2),
+        .pull_up_en = GPIO_PULLUP_ENABLE,      
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,};
+    ESP_ERROR_CHECK(gpio_config(&owi_tx_2_config));
+    gpio_set_level(OWI_TX_2, 0);
     
     // Comparator output pin
     gpio_config_t comp_rx_config = {
@@ -203,8 +220,8 @@ void gpio_pins_init()
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .intr_type = GPIO_INTR_ANYEDGE,};
     ESP_ERROR_CHECK(gpio_config(&comp_rx_config));
-    ESP_ERROR_CHECK(gpio_isr_handler_add(COMP_RX, comp_rx_isr_handler, (void *)COMP_RX));
-    gpio_intr_disable(COMP_RX);
+    // ESP_ERROR_CHECK(gpio_isr_handler_add(COMP_RX, owi_emulation_isr, (void *)COMP_RX));
+    // gpio_intr_disable(COMP_RX);
 }
 
 void uart_event_task(void *pvParameters)
@@ -349,42 +366,50 @@ void keypad_poll_callback()
 
 void print_deferred_task(void* args)
 {
-    touch_print_t evt;
+    print_t evt;
     // char* tag = "print";
     char str[40];
     for (;;)
     {
         if (xQueueReceive(printQueue, &evt, portMAX_DELAY))
-        {    
-            evt.tick /= 240;
+        {                
             switch (evt.evt)
             {
             case 0:
-                printf("Time: %lu\tSync Bit Found\n", evt.tick);
+                printf("Cycles: %lu\tRMT TIME\n", evt.duration);
                 break;            
             case 1:
-                printf("Time: %lu\tStart word OK\n", evt.tick);
-                break;            
-            case 2:
-                printf("Time: %lu\tStart word BAD\n", evt.tick);
-                break;                        
-            case 3:                            
-                printf("Time: %lu\tParity BAD\nbitCnt: %d\tdata: %s\n", evt.tick, evt.bitCnt, int32_to_char_bin(str, evt.data));
-                break;            
-            case 4:
-                printf("Start Metakom Read");                
-                break;            
-            case 5:
-                printf("timeAvg: %lu\n", evt.timeAvg);
+                printf("D: %lu\tl:%lu\tc:%lu\n", evt.duration, evt.level,evt.cnt);
                 break;
-            case 6:                                
-                printf("Time: %lu\tbitCnt: %d\tdata: %s\t dur: %lu\n", evt.tick, evt.bitCnt, int32_to_char_bin(str, evt.data), evt.duration);
+            case 2:
+                printf("Command: 0x%lX\n", evt.level);
+                break;
+            case 3:
+                printf("Presence sending-------\n");
+                break;
+            case 4:
+                printf("Command read------------\n");
+                break;
+            case 5:
+                printf("RESET-------------------\n");
+                break;
+            case 6:
+                printf("Bit: %lu\n", evt.level);
                 break;
             case 7:
-                printf("Time: %lu\tstartCnt: %d\tstartWord: %s\n", evt.tick, evt.bitCnt, int32_to_char_bin(str, evt.data));
+                printf("ROM send----------------\n");
                 break;
             case 8:
-                printf("Metakom Data %lu, %s\n", evt.data, int32_to_char_bin(str, evt.data));
+                printf("ROM matched-------------\n");
+                break;
+            case 9:
+                printf("Reset level: %lu\n", evt.level);
+                break;
+            case 10:
+                printf("bit: %lu, master: %lu\n", evt.level, evt.cnt);
+                break;
+            case 11:
+                printf("bit: %lu, searchState: %lu\n", evt.level, evt.cnt);
                 break;
             default:
                 break;
@@ -394,6 +419,12 @@ void print_deferred_task(void* args)
     }
 }
 
+void setup_isr_service_task(void *pvParameters) 
+{    
+    gpio_install_isr_service(ESP_INTR_FLAG_LEVEL3 | ESP_INTR_FLAG_IRAM);
+    xTaskNotifyGive(MainTaskHandle);
+    vTaskDelete(NULL);
+}
 
 
 void app_main(void)
@@ -434,7 +465,7 @@ void app_main(void)
         ESP_LOGE(TAG, "Failed to create event queue");
         return;
     }
-    printQueue = xQueueCreate(25, sizeof(touch_print_t));
+    printQueue = xQueueCreate(200, sizeof(print_t));
     if (printQueue == NULL)
     {
         ESP_LOGE(TAG, "Failed to create event queue");
@@ -442,9 +473,12 @@ void app_main(void)
     }
 
 //-----------------------------------------------------------------------------
+    MainTaskHandle = xTaskGetCurrentTaskHandle();
+    xTaskCreatePinnedToCore(setup_isr_service_task, "cfg_intr", 2048, NULL, 10, NULL, 1);
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
     gpio_pins_init();
 //-----------------------------------------------------------------------------
-//RMT TX RFID Transmit
+// RMT TX RFID Transmit
     rmt_tx_channel_config_t rfid_tx_ch_config = {
         .gpio_num = RFID_CLK_DATA,
         .clk_src = RMT_CLK_SRC_DEFAULT,
@@ -456,31 +490,46 @@ void app_main(void)
     ESP_ERROR_CHECK(rmt_new_tx_channel(&rfid_tx_ch_config, &rfid_tx_ch));
     rmt_copy_encoder_config_t copy_cfg = {};    
     ESP_ERROR_CHECK(rmt_new_copy_encoder(&copy_cfg, &copy_enc));
-//RMT TX Touch Memory
-    rmt_tx_channel_config_t touch_tx_ch_config = {
+// RMT TX Metakom
+    rmt_tx_channel_config_t metakom_tx_ch_config = {
         .gpio_num = METAKOM_TX,
         .clk_src = RMT_CLK_SRC_DEFAULT,
         .resolution_hz = 1000000, // 1 MHz resolution
         .mem_block_symbols = 64,
         .trans_queue_depth = 4,
-        .flags.invert_out = true,
-        
+        .flags.invert_out = true,        
     };    
-    ESP_ERROR_CHECK(rmt_new_tx_channel(&touch_tx_ch_config, &touch_tx_ch));        
+    ESP_ERROR_CHECK(rmt_new_tx_channel(&metakom_tx_ch_config, &metakom_tx_ch));        
     ESP_ERROR_CHECK(rmt_new_copy_encoder(&copy_cfg, &copy_enc));    
     // Enable and disable to set pin low
-    err = rmt_enable(touch_tx_ch);
+    err = rmt_enable(metakom_tx_ch);
     if (err != ESP_ERR_INVALID_STATE && err != ESP_OK)
         ESP_LOGE(TAG, "Error occurred: %s (0x%x)", esp_err_to_name(err), err);
-    esp_err_t err = rmt_disable(touch_tx_ch);
+    esp_err_t err = rmt_disable(metakom_tx_ch);
     if (err != ESP_ERR_INVALID_STATE && err != ESP_OK)
         ESP_LOGE(TAG, "Error occurred: %s (0x%x)", esp_err_to_name(err), err);
-
-//-----------------------------------------------------------------------------
+// RMT TX 1-Wire Slave Device
+    rmt_tx_channel_config_t owi_tx_ch_config = {
+        .gpio_num = OWI_TX,
+        .clk_src = RMT_CLK_SRC_DEFAULT,
+        .resolution_hz = 1000000, // 1 MHz resolution
+        .mem_block_symbols = 64,
+        .trans_queue_depth = 9,
+        .flags.invert_out = true,        
+    };
+    ESP_ERROR_CHECK(rmt_new_tx_channel(&owi_tx_ch_config, &owi_tx_ch));   
+    ESP_ERROR_CHECK(rmt_new_copy_encoder(&copy_cfg, &copy_enc));
+     err = rmt_enable(owi_tx_ch);
+    if (err != ESP_ERR_INVALID_STATE && err != ESP_OK)
+        ESP_LOGE(TAG, "Error occurred: %s (0x%x)", esp_err_to_name(err), err);
+    const rmt_symbol_word_t dummySymbol = {{20 , 0, 20, 1}};
+    rmt_transmit(owi_tx_ch, copy_enc, &dummySymbol, sizeof(dummySymbol), &owi_rmt_tx_config);
+    rmt_tx_wait_all_done(owi_tx_ch, -1);
+    //-----------------------------------------------------------------------------
     // Create a task to process the deferred events.
     xTaskCreate(rfid_deferred_task, "rfid_deferred_task", 2048, NULL, 4, NULL);    
-    // xTaskCreate(print_deferred_task, "print_deferred_task", 2048, NULL, 3, NULL);
-    xTaskCreate(touch_isr_deferred_task, "touch_isr_deferred_task", 2048, NULL, 4, NULL);    
+    xTaskCreate(print_deferred_task, "print_deferred_task", 2048, NULL, 3, NULL);
+    // xTaskCreate(touch_isr_deferred_task, "touch_isr_deferred_task", 2048, NULL, 4, NULL);    
 //-----------------------------------------------------------------------------
     // Create semaphores
     // modeSwitchSem = xSemaphoreCreateBinary();
@@ -555,7 +604,7 @@ void app_main(void)
     }
     xTaskCreate(ui_handler_task, "ui_handler_task", 4096, NULL, 3, &uiHandlerTask);
 
-    // xTaskCreate(tag_tx_cycle_callback, "tag_tx_cycle_callback", 2048, NULL, 0, &rfidAutoTxHandler);
+    // xTaskCreate(key_tx_cycle_callback, "key_tx_cycle_callback", 2048, NULL, 0, &rfidAutoTxHandler);
     // vTaskSuspend(rfidAutoTxHandler);    
-    
+    // esp_intr_dump(NULL);
 }

@@ -5,6 +5,7 @@
 #include "macros.h"
 #include "esp_timer.h"
 #include "esp_log.h"
+#include "driver/gpio.h"
 #include "rfid.h"
 #include "menus.h"
 #include "littlefs_records.h"
@@ -18,7 +19,7 @@ char *mainMenuEntries[] = {
     "Dump records",                     // 2
     "Search location",                  // 3
     "Delete all tags i mean ALL TAGS",  // 4
-    "Read DS18B20",                     // 5
+    "Transmit iButton",                 // 5
     "Trasnmit Metakom",                 // 6
 };
 menu_listbox_t mainMenuListBox = {
@@ -71,9 +72,9 @@ menu_t *main_menu_handle(ui_event_e event)
             clear_all_locations();
             break;
         
-        case 5:
-            read_ds18b20();
-            // touch_rx_enable();
+        case 5:            
+            owi_slave_enable();
+            // xTaskCreate(owi_tx_deferred_task, "owi_tx_deferred_task", 2048, NULL, 4, NULL);
             break;
         
         case 6:

@@ -272,7 +272,7 @@ void rfid_enable_rx_tag()
     gpio_set_level(COIL_VCC_PIN, 1);
     // Enable GPIO input signal interrupt
     ESP_ERROR_CHECK(gpio_intr_enable(RFID_RX));
-    gpio_set_level(LED_PIN, 1);
+    // gpio_set_level(LED_PIN, 1);
     // Reset manchester decoder
     syncErrorFunc(&m);
 }

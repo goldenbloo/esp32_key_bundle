@@ -268,6 +268,7 @@ menu_t* currentMenu = &mainMenu;
 
 void ui_handler_task(void* args)
 {
+    printf("ui task core id: %d\n", xPortGetCoreID());
     int32_t event;
     if (currentMenu->draw_func)
     {
@@ -349,7 +350,7 @@ void display_delay_timer_callback(void* event)
     xQueueSendToBack(uiEventQueue, (ui_event_e*)event, pdMS_TO_TICKS(15));
 }
 
-void tag_tx_cycle_callback()
+void key_tx_cycle_callback()
 {
     int8_t idx = 0;
     if (bestLocsNum <= 0) return;

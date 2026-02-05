@@ -16,7 +16,6 @@
 #define MAX_SUM  200
 #define MAX_SKIP 200
 
-
 QueueHandle_t touchInputIsrEvtQueue = NULL;
 // TaskHandle_t kt2ReadTaskHandler = NULL;
 static volatile uint32_t lastIsrTime = 0;
@@ -25,6 +24,7 @@ uint32_t keyId;
 
 void IRAM_ATTR comp_rx_isr_handler(void *arg)
 {
+    // if (gpio_get_level(OWI_TX) == 1) return;
     uint32_t duration = esp_cpu_get_cycle_count() - lastIsrTime;
     if ((duration) <  50 * CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ)            
         return;
@@ -41,21 +41,20 @@ void IRAM_ATTR comp_rx_isr_handler(void *arg)
         portYIELD_FROM_ISR();
 }
 
-void touch_isr_deferred_task(void *args)
-{
-    touch_input_evt evt;
-    for (;;)
-    {
-        if (xQueueReceive(touchInputIsrEvtQueue, &evt, portMAX_DELAY))
-        {
-            kt2_read_edge(evt.level, evt.duration, &kt2);
-        }
-    }
-}
+// void touch_isr_deferred_task(void *args)
+// {
+//     touch_input_evt evt;
+//     for (;;)
+//     {
+//         if (xQueueReceive(touchInputIsrEvtQueue, &evt, portMAX_DELAY))
+//         {
+//             kt2_read_edge(evt.level, evt.duration, &kt2);
+//         }
+//     }
+// }
 
 void kt2_read_edge(uint8_t level, uint32_t duration, kt1233_decoder_t* d)
 {
-
     if (d->skipCnt < MAX_SKIP)
     {
         d->skipCnt++;
@@ -135,7 +134,7 @@ void kt2_read_edge(uint8_t level, uint32_t duration, kt1233_decoder_t* d)
             }
             else if (d->bitCnt == 32)
             {
-                // touch_print_t printEvt = {
+                // print_t printEvt = {
                 //     .evt = 8,                    
                 //     .bitCnt = d->bitCnt,
                 //     .data = keyId,
@@ -164,10 +163,17 @@ void touch_rx_enable()
     memset(&kt2, 0, sizeof(kt2)); // Reset decoder
     gpio_set_level(PULLUP_PIN, 0); // Enable pullup
     gpio_set_level(METAKOM_TX, 0);
-    esp_err_t err = rmt_disable(touch_tx_ch);
+    esp_err_t err = rmt_disable(metakom_tx_ch);
     if (err != ESP_ERR_INVALID_STATE && err != ESP_OK)
         ESP_LOGE(TAG, "Error occurred: %s (0x%x)", esp_err_to_name(err), err);
+
+    // gpio_intr_disable(COMP_RX);
+    // gpio_isr_handler_remove(COMP_RX);
+    // gpio_isr_handler_add(COMP_RX, comp_rx_isr_handler, NULL);
+
+    gpio_set_intr_type(COMP_RX, GPIO_INTR_ANYEDGE);
     gpio_intr_enable(COMP_RX);
+
 }
 
 void touch_rx_disable()
@@ -179,10 +185,10 @@ void touch_rx_disable()
 void transmit_metakom_k2()
 {
     const char* TAG = "tx_meta";
-    esp_err_t err = rmt_disable(touch_tx_ch);
+    esp_err_t err = rmt_disable(metakom_tx_ch);
     if (err != ESP_ERR_INVALID_STATE && err != ESP_OK)
         ESP_LOGE(TAG, "Error occurred: %s (0x%x)", esp_err_to_name(err), err);
-    err = rmt_enable(touch_tx_ch);
+    err = rmt_enable(metakom_tx_ch);
     if (err != ESP_ERR_INVALID_STATE && err != ESP_OK)
         ESP_LOGE(TAG, "Error occurred: %s (0x%x)", esp_err_to_name(err), err);
 
@@ -206,27 +212,55 @@ void transmit_metakom_k2()
         data >>= 1;
     }
 
-    ESP_ERROR_CHECK(rmt_transmit(touch_tx_ch, copy_enc, pattern, sizeof(pattern), &touch_tx_config));    
+    ESP_ERROR_CHECK(rmt_transmit(metakom_tx_ch, copy_enc, pattern, sizeof(pattern), &metakom_rmt_tx_config));    
 }
 
 void touch_read_task(void* args)
 {
+    // touch_input_evt evt;
+    printf("touch_read_task id: %d\n", xPortGetCoreID());
+    owi_rom_t addresses[16];
+    // if (isrHandle == NULL)
+    //     esp_intr_alloc(ETS_GPIO_INTR_SOURCE, ESP_INTR_FLAG_LEVEL3 | ESP_INTR_FLAG_IRAM | ESP_INTR_FLAG_EDGE,
+    //                    owi_emulation_isr, NULL, &isrHandle);
+    // esp_intr_dump(NULL);
     while (1) 
     {
-        gpio_intr_disable(COMP_RX);
+        
+        // gpio_intr_disable(COMP_RX);
 
-        if (owi_read_rom(currentKeyData.bytes))
-        {
-            currentKeyType = KEY_TYPE_IBUTTON;
-            ui_event_e event = EVT_KEY_SCAN_DONE;
-            xQueueSendToBack(uiEventQueue, &event, pdMS_TO_TICKS(15));
-        }
-        else
-        {
-            gpio_intr_enable(COMP_RX);
-            xQueueReset(touchInputIsrEvtQueue);
+        // bool ok = owi_read_rom(currentKeyData.bytes);
+        // printf("rom: 0x%" PRIX64 "\n", currentKeyData.value);
+        // if (ok)
+        // {           
+        //     if (currentKeyData.value)
+        //     {
+        //         currentKeyType = KEY_TYPE_IBUTTON;
+        //         ui_event_e event = EVT_KEY_SCAN_DONE;
+        //         xQueueSendToBack(uiEventQueue, &event, pdMS_TO_TICKS(15));
+        //     }
+            
+        //     vTaskDelay(pdMS_TO_TICKS(500));
+        // }
+        int8_t devCnt = owi_search_rom(addresses, 16);
+        printf("owi devices: %d, adress: %llX\n", devCnt, addresses[0].id64);
 
-        }
-        vTaskDelay(pdMS_TO_TICKS(200));
+
+        // else
+        // {
+        //     gpio_intr_enable(COMP_RX);
+        //     // xQueueReset(touchInputIsrEvtQueue);
+        //     while (xQueueReceive(touchInputIsrEvtQueue, &evt, pdMS_TO_TICKS(50))) 
+        //     {
+        //         kt2_read_edge(evt.level, evt.duration, &kt2);
+        //     }
+        // }
+        vTaskDelay(pdMS_TO_TICKS(500));        
+        owi_match_rom(0xf6021830f375ff28);
+        vTaskDelay(pdMS_TO_TICKS(500));
+        owi_read_rom(currentKeyData.bytes);
+        printf("rom: 0x%" PRIX64 "\n", currentKeyData.value);
+        vTaskDelay(pdMS_TO_TICKS(500));
+
     }
 }

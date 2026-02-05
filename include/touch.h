@@ -1,12 +1,13 @@
 #ifndef TOUCH_H
 #define TOUCH_H
 #include "freertos/FreeRTOS.h"
+#include "driver/rmt_tx.h"
 #include "types.h"
 
 extern QueueHandle_t touchInputIsrEvtQueue, printQueue;
-extern rmt_channel_handle_t touch_tx_ch;
+extern rmt_channel_handle_t metakom_tx_ch;
 extern rmt_encoder_handle_t copy_enc;
-extern rmt_transmit_config_t touch_tx_config;
+extern rmt_transmit_config_t metakom_rmt_tx_config;
 
 void touch_rx_enable();
 void touch_rx_disable();

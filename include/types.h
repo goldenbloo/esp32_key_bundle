@@ -106,21 +106,18 @@ typedef struct
   uint64_t tagInputBuff;  
 } manchester_t;
 
-// Touch-----------------------------------------
+// Touch / 1-Wire--------------------------------
 typedef struct {
     bool level;    
     uint32_t duration;
 } touch_input_evt;
 
-typedef struct
-{
-   uint32_t timeAvg;
-   uint32_t tick;
-   uint8_t evt;
-   uint8_t bitCnt;
-   uint32_t data;
-   uint32_t duration;
-} touch_print_t;
+typedef struct{
+    uint32_t evt;
+    uint32_t duration;
+    uint32_t level;
+    uint32_t cnt;
+} print_t;
 
 typedef struct {    
     uint32_t sumCnt;
@@ -139,6 +136,41 @@ typedef struct {
     bool syncBitFound;
     bool startOk;
 } kt1233_decoder_t;
+
+typedef enum
+{
+    OWI_STATE_IDLE,
+    OWI_STATE_RESET_RECEIVED,
+    OWI_STATE_PRESENCE_SENDING,
+    OWI_STATE_RECEIVING_COMMAND,
+    OWI_STATE_TRANSMITTING_DATA,
+    OWI_STATE_ROM_MATCHED,
+    OWI_STATE_RECEIVE_ROM,
+    OWI_STATE_SEARCH_ROM,
+
+} owi_bus_state_t;
+
+typedef union
+{
+    uint8_t idArr[8];
+    uint64_t id64; 
+} owi_rom_t;
+
+typedef struct
+{
+    owi_bus_state_t state;
+    uint8_t edgeIdx;
+    uint8_t currentByte;
+    uint8_t bitCnt;
+    uint8_t byteIdx;    
+    uint8_t *txBuffer;  
+    uint8_t txLen;
+    uint8_t searchROMstate;
+    union {
+    uint64_t rom;
+    uint8_t romBytes[8];
+    };
+} owi_device_t;
 
 // Menus-----------------------------------------
 typedef struct

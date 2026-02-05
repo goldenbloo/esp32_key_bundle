@@ -14,6 +14,7 @@
 #define METAKOM_TX          32
 #define COMP_RX             35
 #define OWI_TX              33
+#define OWI_TX_2            15
 #define PULLUP_PIN          25
 #define KEY_LINE            23
  

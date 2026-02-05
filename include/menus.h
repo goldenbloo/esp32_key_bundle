@@ -31,7 +31,7 @@ void keypad_button_press(ui_event_e pressedButton);
 void confirmation_timer_callback(void *arg);
 void ui_handler_task(void* args);
 void display_delay_timer_callback();
-void tag_tx_cycle_callback();
+void key_tx_cycle_callback();
 void display_list(menu_t *menu);
 void scroll_text_task(void* arg);
 menu_t* go_to_main_menu();

@@ -1,16 +1,19 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "string.h"
+#include "esp_err.h"
 #include "esp_wifi.h"
 #include "macros.h"
 #include "esp_timer.h"
 #include "esp_log.h"
+#include "driver/gpio.h"
 #include "rfid.h"
 #include "touch.h"
 #include "menus.h"
 
 #include "littlefs_records.h"
 #include "globals_menus.h"
+#include "owi.h"
 
 TaskHandle_t touchReadTask = NULL;
 
@@ -27,10 +30,12 @@ menu_t scanTagMenu = {
 void scan_tag_menu_enter()
 {
     scanTagMenu.status = EVT_ON_ENTRY;
-    rfid_enable_rx_tag();
+    // rfid_enable_rx_tag();
+    ESP_ERROR_CHECK(gpio_isr_handler_add(COMP_RX, owi_emulation_isr, (void *)COMP_RX));
+    gpio_set_level(PULLUP_PIN, 0);
     touch_rx_enable();
     if (touchReadTask == NULL)
-        xTaskCreate(touch_read_task, "touch_read_task", 2048, NULL, 4, &touchReadTask);
+        xTaskCreatePinnedToCore(touch_read_task, "touch_read_task", 2048, NULL, 4, &touchReadTask, 1);
 }
 
 menu_t *scan_tag_menu_handle(ui_event_e event)

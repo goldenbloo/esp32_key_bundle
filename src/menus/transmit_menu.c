@@ -57,12 +57,12 @@ void transmit_menu_enter()
     locNameList[0] = "Auto";
     for (int i = 0; i < bestLocsNum; i++)
     {
-        ESP_LOGI(TAG, "Id: %ld\nName: %s\nTag: 0x%010llX", bestLocs[i].id, bestLocs[i].name, bestLocs[i].keyData.value);
+        ESP_LOGI(TAG, "Id: %ld\nName: %s\nType: %s\nTag: 0x%llX", bestLocs[i].id, bestLocs[i].name, get_key_type_string(bestLocs[i].keyType), bestLocs[i].keyData.value);
         locNameList[i + 1] = bestLocs[i].name;
     }
 
     if (rfidAutoTxHandler == NULL)
-        xTaskCreate(tag_tx_cycle_callback, "tag_tx_cycle_callback", 2048, NULL, 0, &rfidAutoTxHandler);
+        xTaskCreate(key_tx_cycle_callback, "key_tx_cycle_callback", 2048, NULL, 0, &rfidAutoTxHandler);
 }
 
 menu_t* transmit_menu_handle(ui_event_e event)
