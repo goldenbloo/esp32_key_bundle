@@ -16,6 +16,6 @@ void owi_slave_enable();
 void owi_emulation_isr(void* arg);
 void owi_match_rom(uint64_t rom);
 int8_t owi_search_rom(owi_rom_t* romArr, uint8_t arrSize);
-
+void owi_print_scratchpad();
 
 #endif

@@ -35,7 +35,7 @@ void scan_tag_menu_enter()
     gpio_set_level(PULLUP_PIN, 0);
     touch_rx_enable();
     if (touchReadTask == NULL)
-        xTaskCreatePinnedToCore(touch_read_task, "touch_read_task", 2048, NULL, 4, &touchReadTask, 1);
+        xTaskCreate(touch_read_task, "touch_read_task", 2048, NULL, 4, &touchReadTask);
 }
 
 menu_t *scan_tag_menu_handle(ui_event_e event)

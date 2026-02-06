@@ -260,6 +260,8 @@ void touch_read_task(void* args)
         vTaskDelay(pdMS_TO_TICKS(500));
         owi_read_rom(currentKeyData.bytes);
         printf("rom: 0x%" PRIX64 "\n", currentKeyData.value);
+
+        // owi_print_scratchpad();
         vTaskDelay(pdMS_TO_TICKS(500));
 
     }

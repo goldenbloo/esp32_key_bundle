@@ -394,7 +394,7 @@ void print_deferred_task(void* args)
                 printf("RESET-------------------\n");
                 break;
             case 6:
-                printf("Bit: %lu\n", evt.level);
+                printf("Bit: %lu, cnt:%lu\n", evt.level, evt.cnt);
                 break;
             case 7:
                 printf("ROM send----------------\n");
@@ -509,22 +509,22 @@ void app_main(void)
     if (err != ESP_ERR_INVALID_STATE && err != ESP_OK)
         ESP_LOGE(TAG, "Error occurred: %s (0x%x)", esp_err_to_name(err), err);
 // RMT TX 1-Wire Slave Device
-    rmt_tx_channel_config_t owi_tx_ch_config = {
-        .gpio_num = OWI_TX,
-        .clk_src = RMT_CLK_SRC_DEFAULT,
-        .resolution_hz = 1000000, // 1 MHz resolution
-        .mem_block_symbols = 64,
-        .trans_queue_depth = 9,
-        .flags.invert_out = true,        
-    };
-    ESP_ERROR_CHECK(rmt_new_tx_channel(&owi_tx_ch_config, &owi_tx_ch));   
-    ESP_ERROR_CHECK(rmt_new_copy_encoder(&copy_cfg, &copy_enc));
-     err = rmt_enable(owi_tx_ch);
-    if (err != ESP_ERR_INVALID_STATE && err != ESP_OK)
-        ESP_LOGE(TAG, "Error occurred: %s (0x%x)", esp_err_to_name(err), err);
-    const rmt_symbol_word_t dummySymbol = {{20 , 0, 20, 1}};
-    rmt_transmit(owi_tx_ch, copy_enc, &dummySymbol, sizeof(dummySymbol), &owi_rmt_tx_config);
-    rmt_tx_wait_all_done(owi_tx_ch, -1);
+    // rmt_tx_channel_config_t owi_tx_ch_config = {
+    //     .gpio_num = OWI_TX,
+    //     .clk_src = RMT_CLK_SRC_DEFAULT,
+    //     .resolution_hz = 1000000, // 1 MHz resolution
+    //     .mem_block_symbols = 64,
+    //     .trans_queue_depth = 9,
+    //     .flags.invert_out = true,        
+    // };
+    // ESP_ERROR_CHECK(rmt_new_tx_channel(&owi_tx_ch_config, &owi_tx_ch));   
+    // ESP_ERROR_CHECK(rmt_new_copy_encoder(&copy_cfg, &copy_enc));
+    //  err = rmt_enable(owi_tx_ch);
+    // if (err != ESP_ERR_INVALID_STATE && err != ESP_OK)
+    //     ESP_LOGE(TAG, "Error occurred: %s (0x%x)", esp_err_to_name(err), err);
+    // const rmt_symbol_word_t dummySymbol = {{20 , 0, 20, 1}};
+    // rmt_transmit(owi_tx_ch, copy_enc, &dummySymbol, sizeof(dummySymbol), &owi_rmt_tx_config);
+    // rmt_tx_wait_all_done(owi_tx_ch, -1);
     //-----------------------------------------------------------------------------
     // Create a task to process the deferred events.
     xTaskCreate(rfid_deferred_task, "rfid_deferred_task", 2048, NULL, 4, NULL);    

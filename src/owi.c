@@ -10,59 +10,11 @@
 #include "owi.h"
 #include "touch.h"
 
-// static const rmt_symbol_word_t reset_symbol = {{485, 0, 50, 1}};
-static const rmt_symbol_word_t presence_symbol = {{5, 1, 110, 0}};
-static const rmt_symbol_word_t bit0_symbol = {{25, 0, 1, 1}};
-// static const rmt_symbol_word_t bit1_symbol = {{10, 0, 64, 1}};
-// static const rmt_symbol_word_t master_read_symbol = {{2, 0, 2, 1}};
 
 static volatile uint32_t lastIsrTime = 0;
 static volatile owi_device_t dev = {
     .rom = 0xf6021830f375ff28,
 };
-
-// bool owi_reset()
-// {
-//     ESP_ERROR_CHECK(rmt_transmit(owi_tx_ch, copy_enc, &reset_symbol, sizeof(reset_symbol), &owi_rmt_tx_config));
-//     rmt_tx_wait_all_done(owi_tx_ch, -1);
-//     esp_rom_delay_us(70);
-//     bool level = gpio_get_level(COMP_RX); // Read presence, signal reversed due to comparator
-//     esp_rom_delay_us(410);      // Wait for the rest of the slot
-//     return level;
-// }
-
-// void owi_write_bit(uint8_t bit)
-// {
-//     if ((bit & 0x1) == 0) // Write 0
-//     {
-//         ESP_ERROR_CHECK(rmt_transmit(owi_tx_ch, copy_enc, &bit0_symbol, sizeof(bit0_symbol), &owi_rmt_tx_config));
-//         rmt_tx_wait_all_done(owi_tx_ch, -1);
-//     }
-//     else // Write 1
-//     {
-//         ESP_ERROR_CHECK(rmt_transmit(owi_tx_ch, copy_enc, &bit1_symbol, sizeof(bit1_symbol), &owi_rmt_tx_config));
-//         rmt_tx_wait_all_done(owi_tx_ch, -1);
-//     }    
-// }
-
-// void owi_write_byte(uint8_t data)
-// {
-//     // taskENTER_CRITICAL(&owi_mux);
-//     for (uint8_t i = 0; i < 8; i++)
-//         owi_write_bit((data >> i) & 0x1);
-//     // taskEXIT_CRITICAL(&owi_mux);
-// }
-
-// bool owi_read_bit()
-// {
-//     bool level = 1;  
-//     ESP_ERROR_CHECK(rmt_transmit(owi_tx_ch, copy_enc, &master_read_symbol, sizeof(master_read_symbol), &owi_rmt_tx_config));
-//     esp_rom_delay_us(13);
-//     level = !gpio_get_level(COMP_RX); // Read level, signal reversed due to comparator
-//     rmt_tx_wait_all_done(owi_tx_ch, -1);
-//     esp_rom_delay_us(50); // Wait for the rest of the slot
-//     return level;
-// }
 
 bool owi_reset()
 {    
@@ -259,7 +211,8 @@ int8_t owi_search_rom(owi_rom_t* pRom, uint8_t arrSize)
             LastDeviceFlag = false;
             device_found = false;
         }
-   } while (!LastDeviceFlag);
+//    } while (!LastDeviceFlag);
+   } while (0);
 
 
    return romIndex;
@@ -314,6 +267,33 @@ uint64_t read_ds18b20()
 
 }
 
+void owi_print_scratchpad()
+{
+    uint8_t scratchpad[9];
+
+    if (!owi_reset()) 
+        return ; // No key present
+
+    owi_write_byte(0xcc);
+    owi_write_byte(0x44);
+    vTaskDelay(pdMS_TO_TICKS(750));
+    owi_reset();
+    owi_write_byte(0xcc);
+    owi_write_byte(0xBE);
+    // 2. Read all 9 bytes of the scratchpad
+    printf("Scratchpad Data: ");
+    for (int i = 0; i < 9; i++)
+    {
+        scratchpad[i] = owi_read_byte();
+        printf("%02X ", scratchpad[i]);
+    }
+    printf("\n");
+    // 3. Optional: Extract temperature (for DS18B20)
+    int16_t raw_temp = (scratchpad[1] << 8) | scratchpad[0];
+    float temperature = raw_temp / 16.0;
+    printf("Temperature: %.2f°C\n", temperature);
+}
+
 void owi_match_rom(uint64_t rom)
 {
     if (!owi_reset()) 
@@ -341,6 +321,7 @@ void owi_slave_enable()
     // ESP_ERROR_CHECK(gpio_set_intr_type(COMP_RX, GPIO_INTR_ANYEDGE));
     // ESP_ERROR_CHECK(gpio_intr_enable(COMP_RX));
 }
+
 static void device_reset()
 {        
     dev.state = OWI_STATE_IDLE;
@@ -354,6 +335,26 @@ static void device_reset()
     // dev.rom = 0xf6021830f375ff28; //test
 }
 
+static inline void owi_slave_presence()
+{
+    GPIO.out1_w1ts.val = (1UL << (OWI_TX - 32)); // Pull low
+    esp_rom_delay_us(100);
+    GPIO.out1_w1tc.val = (1UL << (OWI_TX - 32)); // Release high
+    esp_rom_delay_us(2);
+    GPIO.status1_w1tc.val = (1UL << (OWI_TX - 32));
+    lastIsrTime = esp_cpu_get_cycle_count();
+}
+
+static inline void owi_slave_write_zero()
+{
+    GPIO.out1_w1ts.val = (1UL << (OWI_TX - 32)); // Pull low
+    esp_rom_delay_us(55);
+    GPIO.out1_w1tc.val = (1UL << (OWI_TX - 32)); // Release high
+    esp_rom_delay_us(2);
+    GPIO.status1_w1tc.val = (1UL << (OWI_TX - 32));
+    lastIsrTime = esp_cpu_get_cycle_count();
+}
+
 void IRAM_ATTR owi_emulation_isr(void *arg)
 {    
     static print_t evt;
@@ -361,6 +362,7 @@ void IRAM_ATTR owi_emulation_isr(void *arg)
     // GPIO.status_w1tc = (1ULL << COMP_RX);    
     static volatile uint8_t level = true;
     uint32_t now = esp_cpu_get_cycle_count();
+    static uint32_t resetTime;
     uint32_t duration_ticks = now - lastIsrTime;
     lastIsrTime = now;
     uint32_t duration_us = duration_ticks / CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ;
@@ -369,41 +371,38 @@ void IRAM_ATTR owi_emulation_isr(void *arg)
     // if (duration_us > 550)
     //     device_reset();
 
-    // level = (GPIO.in1.val >> (COMP_RX - 32)) & 1;
-    if (dev.state == OWI_STATE_IDLE)
-        level = (GPIO.in1.val >> (COMP_RX - 32)) & 1;
-    else
-        level = !level;    
-
+    level = (GPIO.in1.val >> (COMP_RX - 32)) & 1;
+    // if (dev.state == OWI_STATE_IDLE)
+    //     level = (GPIO.in1.val >> (COMP_RX - 32)) & 1;
+    // else
+    //     level = !level;    
     // if (level) GPIO.out_w1ts = (1UL << LED_PIN);
     // else       GPIO.out_w1tc = (1UL << LED_PIN);
-    if (level && duration_us > 460)
+    // evt.evt = 1; evt.duration = (now - resetTime) / 160;  evt.level = !level; evt.cnt = dev.edgeIdx;
+    // xQueueSendToBackFromISR(printQueue, &evt, NULL);
+
+    if (level && duration_us > 460 && duration_us < 600)
     {
         device_reset();
-        dev.state = OWI_STATE_PRESENCE_SENDING;
+        resetTime = esp_cpu_get_cycle_count();
+        
         evt.evt = 3;
         xQueueSendToBackFromISR(printQueue, &evt, NULL);
-        now = esp_cpu_get_cycle_count();
-        rmt_transmit(owi_tx_ch, copy_enc, &presence_symbol, sizeof(presence_symbol), &owi_rmt_tx_config);
-        // evt.evt = 0; evt.level = level;
-        // evt.duration = esp_cpu_get_cycle_count() - now;
-        // xQueueSendToBackFromISR(printQueue, &evt, NULL);
-    }
+        // rmt_transmit(owi_tx_ch, copy_enc, &presence_symbol, sizeof(presence_symbol), &owi_rmt_tx_config);
+        owi_slave_presence();
+        
+        dev.state = OWI_STATE_PRESENCE_SENDING;
 
-    // evt.evt = 1; evt.duration = duration_us;  evt.level = !level; evt.cnt = dev.edgeIdx;
-    // xQueueSendToBackFromISR(printQueue, &evt, NULL);
+        return;
+    }
 
     switch (dev.state)
     {
-    case OWI_STATE_PRESENCE_SENDING:
-        if (level == 1 && dev.edgeIdx == 2)
-        {
+    case OWI_STATE_PRESENCE_SENDING:      
+        
             dev.state = OWI_STATE_RECEIVING_COMMAND;
-            // evt.evt = 4;
-            // xQueueSendToBackFromISR(printQueue, &evt, NULL);
-        }
-        else if (dev.edgeIdx > 3)
-            device_reset();
+            evt.evt = 4;
+            xQueueSendToBackFromISR(printQueue, &evt, NULL);        
         break;
 
     case OWI_STATE_RECEIVING_COMMAND:
@@ -413,11 +412,11 @@ void IRAM_ATTR owi_emulation_isr(void *arg)
             // If duration was short, it's a 1. If long, it's a 0.
             uint8_t bit = (duration_us < 35) ? 1 : 0;
             dev.currentByte |= (bit << dev.bitCnt);
-            dev.bitCnt++;
-            // evt.evt = 6;
-            // evt.level = bit;
+
+            // evt.evt = 6; evt.level = bit; evt.cnt = dev.bitCnt;
             // xQueueSendToBackFromISR(printQueue, &evt, NULL);
 
+            dev.bitCnt++;
             if (dev.bitCnt == 8)
             {
                 evt.evt = 2;
@@ -475,12 +474,18 @@ void IRAM_ATTR owi_emulation_isr(void *arg)
             {
             case 0: // 1. Send Real Bit
                 if (currentRomBit == 0)
-                    rmt_transmit(owi_tx_ch, copy_enc, &bit0_symbol, sizeof(bit0_symbol), &owi_rmt_tx_config);
+                {
+                    // rmt_transmit(owi_tx_ch, copy_enc, &bit0_symbol, sizeof(bit0_symbol), &owi_rmt_tx_config);
+                    owi_slave_write_zero();
+                }
                 dev.searchROMstate = 1;
                 break;
             case 1: // 2. Send Inverted Bit
                 if (currentRomBit == 1)
-                    rmt_transmit(owi_tx_ch, copy_enc, &bit0_symbol, sizeof(bit0_symbol), &owi_rmt_tx_config);
+                {
+                    // rmt_transmit(owi_tx_ch, copy_enc, &bit0_symbol, sizeof(bit0_symbol), &owi_rmt_tx_config);
+                    owi_slave_write_zero();
+                }
                 dev.searchROMstate = 2;
                 break;
             case 2: // Skip edge
@@ -558,11 +563,14 @@ void IRAM_ATTR owi_emulation_isr(void *arg)
         if (level == 0)
         {
             uint8_t bit = (dev.txBuffer[dev.byteIdx] >> dev.bitCnt) & 0x01;
-            evt.evt = 6;
-            evt.level = bit;
-            xQueueSendToBackFromISR(printQueue, &evt, NULL);
+            // evt.evt = 6;
+            // evt.level = bit;
+            // xQueueSendToBackFromISR(printQueue, &evt, NULL);
             if (bit == 0)
-                rmt_transmit(owi_tx_ch, copy_enc, &bit0_symbol, sizeof(bit0_symbol), &owi_rmt_tx_config);
+            {
+                // rmt_transmit(owi_tx_ch, copy_enc, &bit0_symbol, sizeof(bit0_symbol), &owi_rmt_tx_config);
+                owi_slave_write_zero();
+            }
 
             dev.bitCnt++;
             if (dev.bitCnt == 8)
