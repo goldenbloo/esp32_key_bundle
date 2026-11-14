@@ -106,6 +106,9 @@ bool owi_read_rom(uint8_t *rom_buffer)
     for (int i = 0; i < 8; i++) 
         rom_buffer[i] = owi_read_byte();
     
+    if (rom_buffer[0] == 0x00) // Check if not all zero
+        return false;
+
     // Verify CRC
     if (owi_crc8(rom_buffer, 7) != rom_buffer[7]) 
         return false; // Checksum failed
@@ -306,22 +309,6 @@ void owi_match_rom(uint64_t rom)
     }
 }
 
-void owi_slave_enable()
-{
-    dev.state = OWI_STATE_IDLE;
-    dev.bitCnt = 0;
-    dev.byteIdx = 0;
-    dev.currentByte = 0;
-    gpio_set_level(PULLUP_PIN, 0); // for testing
-
-    // ESP_ERROR_CHECK(gpio_intr_disable(COMP_RX));
-    // ESP_ERROR_CHECK(gpio_isr_handler_remove(COMP_RX));
-    // ESP_ERROR_CHECK(gpio_isr_handler_add(COMP_RX, owi_emulation_isr, NULL));
-
-    // ESP_ERROR_CHECK(gpio_set_intr_type(COMP_RX, GPIO_INTR_ANYEDGE));
-    // ESP_ERROR_CHECK(gpio_intr_enable(COMP_RX));
-}
-
 static void device_reset()
 {        
     dev.state = OWI_STATE_IDLE;
@@ -334,6 +321,24 @@ static void device_reset()
     dev.searchROMstate = 0;
     // dev.rom = 0xf6021830f375ff28; //test
 }
+
+void owi_slave_enable(uint64_t rom)
+{
+    dev.rom = rom;
+    device_reset();
+    // gpio_set_level(PULLUP_PIN, 0); // for testing
+    gpio_set_level(PULLUP_PIN, 1); // Pullup disable
+    
+    ESP_ERROR_CHECK(gpio_isr_handler_add(COMP_RX, owi_emulation_isr, (void *)COMP_RX));
+    ESP_ERROR_CHECK(gpio_intr_enable(COMP_RX));
+}
+
+void owi_slave_disable()
+{
+    ESP_ERROR_CHECK(gpio_intr_disable(COMP_RX));
+}
+
+
 
 static inline void owi_slave_presence()
 {
@@ -362,7 +367,7 @@ void IRAM_ATTR owi_emulation_isr(void *arg)
     // GPIO.status_w1tc = (1ULL << COMP_RX);    
     static volatile uint8_t level = true;
     uint32_t now = esp_cpu_get_cycle_count();
-    static uint32_t resetTime;
+    // static uint32_t resetTime;
     uint32_t duration_ticks = now - lastIsrTime;
     lastIsrTime = now;
     uint32_t duration_us = duration_ticks / CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ;
@@ -370,7 +375,6 @@ void IRAM_ATTR owi_emulation_isr(void *arg)
 
     // if (duration_us > 550)
     //     device_reset();
-
     level = (GPIO.in1.val >> (COMP_RX - 32)) & 1;
     // if (dev.state == OWI_STATE_IDLE)
     //     level = (GPIO.in1.val >> (COMP_RX - 32)) & 1;
@@ -384,7 +388,7 @@ void IRAM_ATTR owi_emulation_isr(void *arg)
     if (level && duration_us > 460 && duration_us < 600)
     {
         device_reset();
-        resetTime = esp_cpu_get_cycle_count();
+        // resetTime = esp_cpu_get_cycle_count();
         
         evt.evt = 3;
         xQueueSendToBackFromISR(printQueue, &evt, NULL);

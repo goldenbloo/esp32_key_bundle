@@ -19,7 +19,7 @@ extern rmt_channel_handle_t rfid_tx_ch;
 extern rmt_encoder_handle_t copy_enc;
 extern rmt_transmit_config_t rfid_tx_config;
 extern rmt_symbol_word_t pulse_pattern[RMT_SIZE];
-extern TaskHandle_t uiHandlerTask, rfidAutoTxHandler;
+extern TaskHandle_t uiHandlerTask, cycleKeyTxHandler;
 
 extern u8g2_t u8g2;
 
@@ -31,7 +31,7 @@ void keypad_button_press(ui_event_e pressedButton);
 void confirmation_timer_callback(void *arg);
 void ui_handler_task(void* args);
 void display_delay_timer_callback();
-void key_tx_cycle_callback();
+// void key_tx_cycle_callback();
 void display_list(menu_t *menu);
 void scroll_text_task(void* arg);
 menu_t* go_to_main_menu();

@@ -121,7 +121,7 @@ void loc_info_menu_draw()
         case KEY_TYPE_EM4100_MANCHESTER_64:            
             formatStr = "0x%010llX";
             break;
-        case KEY_TYPE_KT2:
+        case KEY_TYPE_METAKOM:
              formatStr = "0x%08llX";
             break;
         case KEY_TYPE_IBUTTON:            

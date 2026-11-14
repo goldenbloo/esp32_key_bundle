@@ -15,7 +15,9 @@
 
 #define MAX_SUM  200
 #define MAX_SKIP 200
+#define RESET_DECODER memset(&kt2, 0, sizeof(kt2))
 
+TaskHandle_t touchReadTask = NULL;
 QueueHandle_t touchInputIsrEvtQueue = NULL;
 // TaskHandle_t kt2ReadTaskHandler = NULL;
 static volatile uint32_t lastIsrTime = 0;
@@ -41,20 +43,23 @@ void IRAM_ATTR comp_rx_isr_handler(void *arg)
         portYIELD_FROM_ISR();
 }
 
-// void touch_isr_deferred_task(void *args)
-// {
-//     touch_input_evt evt;
-//     for (;;)
-//     {
-//         if (xQueueReceive(touchInputIsrEvtQueue, &evt, portMAX_DELAY))
-//         {
-//             kt2_read_edge(evt.level, evt.duration, &kt2);
-//         }
-//     }
-// }
+void touch_isr_deferred_task(void *args)
+{
+    touch_input_evt evt;
+    for (;;)
+    {
+        if (xQueueReceive(touchInputIsrEvtQueue, &evt, portMAX_DELAY))
+        {            
+            // kt2_read_edge(evt.level, evt.duration, &kt2);
+            kt2_read_edge(!evt.level, evt.duration, &kt2); // Inverting inverted comparator output
+        }
+    }
+}
+
 
 void kt2_read_edge(uint8_t level, uint32_t duration, kt1233_decoder_t* d)
 {
+    
     if (d->skipCnt < MAX_SKIP)
     {
         d->skipCnt++;
@@ -144,7 +149,7 @@ void kt2_read_edge(uint8_t level, uint32_t duration, kt1233_decoder_t* d)
 
                 memset(&currentKeyData.value, 0, sizeof(currentKeyData.value)); // Reset key value
                 currentKeyData.kt2.id = keyId;
-                currentKeyType = KEY_TYPE_KT2;
+                currentKeyType = KEY_TYPE_METAKOM;
                 ui_event_e event = EVT_KEY_SCAN_DONE;
                 xQueueSendToBack(uiEventQueue, &event, pdMS_TO_TICKS(15));
                 // xQueueSend(printQueue, &printEvt, 0);
@@ -157,22 +162,23 @@ void kt2_read_edge(uint8_t level, uint32_t duration, kt1233_decoder_t* d)
 
 void touch_rx_enable()
 {
-    const char* TAG = "tx_meta";
+    const char* TAG = "rx_touch";
     // uint8_t printEvt = 4;
     // xQueueSend(printQueue, &printEvt, 0);    
     memset(&kt2, 0, sizeof(kt2)); // Reset decoder
     gpio_set_level(PULLUP_PIN, 0); // Enable pullup
     gpio_set_level(METAKOM_TX, 0);
+    // Disable RMT
     esp_err_t err = rmt_disable(metakom_tx_ch);
     if (err != ESP_ERR_INVALID_STATE && err != ESP_OK)
         ESP_LOGE(TAG, "Error occurred: %s (0x%x)", esp_err_to_name(err), err);
-
-    // gpio_intr_disable(COMP_RX);
-    // gpio_isr_handler_remove(COMP_RX);
-    // gpio_isr_handler_add(COMP_RX, comp_rx_isr_handler, NULL);
-
+    // Insatall ISR handler
+    ESP_ERROR_CHECK(gpio_isr_handler_add(COMP_RX, comp_rx_isr_handler, (void *)COMP_RX));
     gpio_set_intr_type(COMP_RX, GPIO_INTR_ANYEDGE);
-    gpio_intr_enable(COMP_RX);
+
+    // gpio_intr_enable(COMP_RX);
+    if (touchReadTask == NULL)
+        xTaskCreate(touch_read_task, "touch_read_task", 2048, NULL, 4, &touchReadTask);
 
 }
 
@@ -180,11 +186,19 @@ void touch_rx_disable()
 {
     gpio_intr_disable(COMP_RX);
     gpio_set_level(PULLUP_PIN, 1); // Disable pullip PNP
+    if (touchReadTask)
+    {
+        vTaskDelete(touchReadTask);
+        touchReadTask = NULL;
+    }    
 }
 
-void transmit_metakom_k2()
+void touch_tx_metakom(uint32_t key)
 {
+    printf("Metakom tx------------\n");
     const char* TAG = "tx_meta";
+    gpio_set_level(PULLUP_PIN, 1); // PNP pullup disabled
+    // gpio_set_level(PULLUP_PIN, 0); // PNP pullup disabled
     esp_err_t err = rmt_disable(metakom_tx_ch);
     if (err != ESP_ERR_INVALID_STATE && err != ESP_OK)
         ESP_LOGE(TAG, "Error occurred: %s (0x%x)", esp_err_to_name(err), err);
@@ -195,7 +209,7 @@ void transmit_metakom_k2()
     static rmt_symbol_word_t pattern[36];
     uint32_t period = 200;
     uint8_t startWord = 2;
-    uint32_t data = keyId;
+    uint8_t data = key;
     rmt_symbol_word_t bit_0 = {{period * 0.4, 0, period * 0.6, 1}};
     rmt_symbol_word_t bit_1 = {{period * 0.6, 0, period * 0.4, 1}};
 
@@ -215,54 +229,33 @@ void transmit_metakom_k2()
     ESP_ERROR_CHECK(rmt_transmit(metakom_tx_ch, copy_enc, pattern, sizeof(pattern), &metakom_rmt_tx_config));    
 }
 
+void touch_tx_disable()
+{
+    esp_err_t err = rmt_disable(metakom_tx_ch);
+    if (err != ESP_ERR_INVALID_STATE && err != ESP_OK)
+        ESP_LOGE("tx_meta_stop", "Error occurred: %s (0x%x)", esp_err_to_name(err), err);
+}
+
+
 void touch_read_task(void* args)
 {
-    // touch_input_evt evt;
-    printf("touch_read_task id: %d\n", xPortGetCoreID());
-    owi_rom_t addresses[16];
-    // if (isrHandle == NULL)
-    //     esp_intr_alloc(ETS_GPIO_INTR_SOURCE, ESP_INTR_FLAG_LEVEL3 | ESP_INTR_FLAG_IRAM | ESP_INTR_FLAG_EDGE,
-    //                    owi_emulation_isr, NULL, &isrHandle);
-    // esp_intr_dump(NULL);
-    while (1) 
+    while (1)
     {
-        
-        // gpio_intr_disable(COMP_RX);
-
-        // bool ok = owi_read_rom(currentKeyData.bytes);
-        // printf("rom: 0x%" PRIX64 "\n", currentKeyData.value);
-        // if (ok)
-        // {           
-        //     if (currentKeyData.value)
-        //     {
-        //         currentKeyType = KEY_TYPE_IBUTTON;
-        //         ui_event_e event = EVT_KEY_SCAN_DONE;
-        //         xQueueSendToBack(uiEventQueue, &event, pdMS_TO_TICKS(15));
-        //     }
-            
-        //     vTaskDelay(pdMS_TO_TICKS(500));
-        // }
-        int8_t devCnt = owi_search_rom(addresses, 16);
-        printf("owi devices: %d, adress: %llX\n", devCnt, addresses[0].id64);
+        gpio_intr_disable(COMP_RX);
 
 
-        // else
-        // {
-        //     gpio_intr_enable(COMP_RX);
-        //     // xQueueReset(touchInputIsrEvtQueue);
-        //     while (xQueueReceive(touchInputIsrEvtQueue, &evt, pdMS_TO_TICKS(50))) 
-        //     {
-        //         kt2_read_edge(evt.level, evt.duration, &kt2);
-        //     }
-        // }
-        vTaskDelay(pdMS_TO_TICKS(500));        
-        owi_match_rom(0xf6021830f375ff28);
+        if (owi_read_rom(currentKeyData.bytes))
+        {
+            currentKeyType = KEY_TYPE_IBUTTON;
+            ui_event_e event = EVT_KEY_SCAN_DONE;
+            xQueueSendToBack(uiEventQueue, &event, pdMS_TO_TICKS(15));
+        } 
+        else       
+        {
+            gpio_intr_enable(COMP_RX);
+            RESET_DECODER;
+            xQueueReset(touchInputIsrEvtQueue);
+        }
         vTaskDelay(pdMS_TO_TICKS(500));
-        owi_read_rom(currentKeyData.bytes);
-        printf("rom: 0x%" PRIX64 "\n", currentKeyData.value);
-
-        // owi_print_scratchpad();
-        vTaskDelay(pdMS_TO_TICKS(500));
-
     }
 }

@@ -7,9 +7,12 @@
 #include "esp_log.h"
 #include "rfid.h"
 #include "menus.h"
+#include "touch.h"
+#include "owi.h"
 
 #include "littlefs_records.h"
 #include "globals_menus.h"
+void key_tx_cycle_callback();
 
 menu_listbox_t transmitMenuListBox = {
     .selectedRow = 0,
@@ -59,10 +62,7 @@ void transmit_menu_enter()
     {
         ESP_LOGI(TAG, "Id: %ld\nName: %s\nType: %s\nTag: 0x%llX", bestLocs[i].id, bestLocs[i].name, get_key_type_string(bestLocs[i].keyType), bestLocs[i].keyData.value);
         locNameList[i + 1] = bestLocs[i].name;
-    }
-
-    if (rfidAutoTxHandler == NULL)
-        xTaskCreate(key_tx_cycle_callback, "key_tx_cycle_callback", 2048, NULL, 0, &rfidAutoTxHandler);
+    }   
 }
 
 menu_t* transmit_menu_handle(ui_event_e event)
@@ -78,17 +78,40 @@ menu_t* transmit_menu_handle(ui_event_e event)
     else
     {
         list_event_handle(&transmitMenu, event);
-        if (transmitMenu.listBox->selectedRow == 0)        
-            vTaskResume(rfidAutoTxHandler);
-        
+        if (transmitMenu.listBox->selectedRow == 0)
+        {
+            if (cycleKeyTxHandler == NULL)
+                xTaskCreate(key_tx_cycle_callback, "key_tx_cycle_callback", 2048, NULL, 0, &cycleKeyTxHandler);
+        }
         else
         {
-            vTaskSuspend(rfidAutoTxHandler);
+            if (cycleKeyTxHandler != NULL)
+            {
+                vTaskDelete(cycleKeyTxHandler);
+                cycleKeyTxHandler = NULL;                
+            }
             int8_t idx = transmitMenu.listBox->selectedRow - 1;
             if (idx > sizeof(bestLocs))
                 ESP_LOGE("transmit_menu_handle", "idx > sizeof(bestLocs)");
-            uint64_t rawTag = rfid_arr_tag_to_raw_bitstream(bestLocs[idx].keyData.rfid.id);
-            rfid_enable_tx_raw_tag(rawTag);
+            ESP_LOGI("tx menu handle", "Id: %ld\nName: %s\tType: %s\tTag: 0x%llX", bestLocs[idx].id, bestLocs[idx].name, get_key_type_string(bestLocs[idx].keyType), bestLocs[idx].keyData.value);
+
+            rfid_disable_rx_tx();
+            touch_tx_disable();
+            owi_slave_disable();
+            switch (bestLocs[idx].keyType)
+            {
+            case KEY_TYPE_EM4100_MANCHESTER_64:
+                rfid_enable_tx_raw(rfid_arr_tag_to_raw_bitstream(bestLocs[idx].keyData.rfid.id));
+                break;
+            case KEY_TYPE_METAKOM:
+                touch_tx_metakom(bestLocs[idx].keyData.kt2.id);
+                break;
+            case KEY_TYPE_IBUTTON:
+                owi_slave_enable(bestLocs[idx].keyData.ds1990.rom);
+                break;
+            default:
+                break;
+            }
         }
     }
     return NULL;
@@ -96,11 +119,11 @@ menu_t* transmit_menu_handle(ui_event_e event)
 
 void transmit_menu_exit()
 {
-    // vTaskSuspend(rfidAutoTxHandler);
-    if (rfidAutoTxHandler != NULL)
+    // vTaskSuspend(keyCycleTxHandler);
+    if (cycleKeyTxHandler != NULL)
     {
-        vTaskDelete(rfidAutoTxHandler);
-        rfidAutoTxHandler = NULL;
+        vTaskDelete(cycleKeyTxHandler);
+        cycleKeyTxHandler = NULL;
     }
     rfid_disable_rx_tx();
     esp_timer_stop(display_delay_timer_handle);
@@ -120,4 +143,43 @@ void transmit_menu_draw()
     else        
         display_list(&transmitMenu);
     
+}
+
+void key_tx_cycle_callback()
+{
+    int8_t idx = 0;
+    if (bestLocsNum <= 0) return;
+
+    for (;;)
+    {
+        switch (bestLocs[idx].keyType)
+        {
+        case KEY_TYPE_EM4100_MANCHESTER_64:
+           rfid_enable_tx_raw(rfid_arr_tag_to_raw_bitstream(bestLocs[idx].keyData.rfid.id));
+           vTaskDelay(1000 / portTICK_PERIOD_MS);
+           rfid_disable_rx_tx();
+            break;
+
+        case KEY_TYPE_METAKOM:
+            touch_tx_metakom(bestLocs[idx].keyData.kt2.id);
+            vTaskDelay(1000 / portTICK_PERIOD_MS);
+            touch_tx_disable();            
+            break;
+        
+        case KEY_TYPE_IBUTTON:
+            owi_slave_enable(bestLocs[idx].keyData.ds1990.rom);
+            vTaskDelay(1000 / portTICK_PERIOD_MS);
+            owi_slave_disable();
+            break;
+        
+        default:
+            break;
+        }
+        
+        // ESP_LOGI("tag_tx_cycle", "loc: %s\ttag: 0x%010llX", bestLocs[i].name, keyData);
+        
+        idx++;
+        if (idx >= bestLocsNum)
+            idx = 0;
+    }
 }

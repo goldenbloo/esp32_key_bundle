@@ -73,13 +73,13 @@ menu_t *main_menu_handle(ui_event_e event)
             break;
         
         case 5:            
-            owi_slave_enable();
+            // owi_slave_enable();
             // xTaskCreate(owi_tx_deferred_task, "owi_tx_deferred_task", 2048, NULL, 4, NULL);
             break;
         
         case 6:
             
-            transmit_metakom_k2();
+            touch_tx_metakom(0xebe4419a);
             break;
 
         default:

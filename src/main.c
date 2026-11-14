@@ -44,7 +44,7 @@ rmt_transmit_config_t rfid_tx_config = {
 rmt_transmit_config_t metakom_rmt_tx_config = {
     .loop_count = -1,
     .flags.queue_nonblocking = true,
-    .flags.eot_level = 1, // Inverted
+    .flags.eot_level = 0, // Inverted
 };
 rmt_transmit_config_t owi_rmt_tx_config = {
     .loop_count = 0,
@@ -57,7 +57,7 @@ SemaphoreHandle_t scanSem, scanDoneSem, rfidDoneSem, scrollDeleteSem, drawMutex;
 u8g2_t u8g2;
 
 QueueHandle_t uartQueue, uiEventQueue, modeSwitchQueue, printQueue;
-TaskHandle_t uiHandlerTask = NULL, rfidAutoTxHandler = NULL, MainTaskHandle = NULL;
+TaskHandle_t uiHandlerTask = NULL, cycleKeyTxHandler = NULL, MainTaskHandle = NULL;
 esp_timer_handle_t confirmation_timer_handle, display_delay_timer_handle, keypad_poll_handler;
 ui_event_e display_delay_cb_arg;
 
@@ -172,7 +172,8 @@ void gpio_pins_init()
 
     // Touch memory pins
     // Pullup pin
-    gpio_set_level(PULLUP_PIN, 0); // PNP pullup enabled; TO BE DISABLED AFTER TESTING
+    // gpio_set_level(PULLUP_PIN, 0); // PNP pullup enabled; TO BE DISABLED AFTER TESTING
+    gpio_set_level(PULLUP_PIN, 1); // PNP pullup disabled
     gpio_config_t touch_pullup_config = {
         .mode = GPIO_MODE_OUTPUT,
         .pin_bit_mask = (1ULL << PULLUP_PIN),
@@ -459,13 +460,13 @@ void app_main(void)
         ESP_LOGE(TAG, "Failed to create key queue");
         return;
     }
-    touchInputIsrEvtQueue = xQueueCreate(10, sizeof(rfid_input_event_t));
+    touchInputIsrEvtQueue = xQueueCreate(50, sizeof(rfid_input_event_t));
     if (touchInputIsrEvtQueue == NULL)
     {
         ESP_LOGE(TAG, "Failed to create event queue");
         return;
     }
-    printQueue = xQueueCreate(200, sizeof(print_t));
+    printQueue = xQueueCreate(50, sizeof(print_t));
     if (printQueue == NULL)
     {
         ESP_LOGE(TAG, "Failed to create event queue");
@@ -497,17 +498,17 @@ void app_main(void)
         .resolution_hz = 1000000, // 1 MHz resolution
         .mem_block_symbols = 64,
         .trans_queue_depth = 4,
-        .flags.invert_out = true,        
-    };    
+        .flags.invert_out = false,
+    };        
     ESP_ERROR_CHECK(rmt_new_tx_channel(&metakom_tx_ch_config, &metakom_tx_ch));        
     ESP_ERROR_CHECK(rmt_new_copy_encoder(&copy_cfg, &copy_enc));    
     // Enable and disable to set pin low
-    err = rmt_enable(metakom_tx_ch);
-    if (err != ESP_ERR_INVALID_STATE && err != ESP_OK)
-        ESP_LOGE(TAG, "Error occurred: %s (0x%x)", esp_err_to_name(err), err);
-    esp_err_t err = rmt_disable(metakom_tx_ch);
-    if (err != ESP_ERR_INVALID_STATE && err != ESP_OK)
-        ESP_LOGE(TAG, "Error occurred: %s (0x%x)", esp_err_to_name(err), err);
+    // err = rmt_enable(metakom_tx_ch);
+    // if (err != ESP_ERR_INVALID_STATE && err != ESP_OK)
+    //     ESP_LOGE(TAG, "Error occurred: %s (0x%x)", esp_err_to_name(err), err);
+    // esp_err_t err = rmt_disable(metakom_tx_ch);
+    // if (err != ESP_ERR_INVALID_STATE && err != ESP_OK)
+    //     ESP_LOGE(TAG, "Error occurred: %s (0x%x)", esp_err_to_name(err), err);
 // RMT TX 1-Wire Slave Device
     // rmt_tx_channel_config_t owi_tx_ch_config = {
     //     .gpio_num = OWI_TX,
@@ -528,8 +529,8 @@ void app_main(void)
     //-----------------------------------------------------------------------------
     // Create a task to process the deferred events.
     xTaskCreate(rfid_deferred_task, "rfid_deferred_task", 2048, NULL, 4, NULL);    
-    xTaskCreate(print_deferred_task, "print_deferred_task", 2048, NULL, 3, NULL);
-    // xTaskCreate(touch_isr_deferred_task, "touch_isr_deferred_task", 2048, NULL, 4, NULL);    
+    xTaskCreate(print_deferred_task, "print_deferred_task", 2048, NULL, 1, NULL);
+    xTaskCreate(touch_isr_deferred_task, "touch_isr_deferred_task", 2048, NULL, 2, NULL);    
 //-----------------------------------------------------------------------------
     // Create semaphores
     // modeSwitchSem = xSemaphoreCreateBinary();
@@ -604,7 +605,7 @@ void app_main(void)
     }
     xTaskCreate(ui_handler_task, "ui_handler_task", 4096, NULL, 3, &uiHandlerTask);
 
-    // xTaskCreate(key_tx_cycle_callback, "key_tx_cycle_callback", 2048, NULL, 0, &rfidAutoTxHandler);
-    // vTaskSuspend(rfidAutoTxHandler);    
+    // xTaskCreate(key_tx_cycle_callback, "key_tx_cycle_callback", 2048, NULL, 0, &cycleKeyTxHandler);
+    // vTaskSuspend(cycleKeyTxHandler);    
     // esp_intr_dump(NULL);
 }

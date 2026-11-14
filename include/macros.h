@@ -1,18 +1,18 @@
 
 #define RFID_RX             4
 #define LED_PIN             2
-#define RFID_CLK_DATA       18
-#define COIL_VCC_PIN        5
+#define RFID_CLK_DATA       5
+#define COIL_VCC_PIN        18
 #define CONFIG_SDA_GPIO     21
 #define CONFIG_SCL_GPIO     22
 
 #define CD4017_CLK          14
 #define CD4017_RST          12
-#define KEYPAD_C0           27
-#define KEYPAD_C1           26
+#define KEYPAD_C0           14
+#define KEYPAD_C1           27
 
-#define METAKOM_TX          32
-#define COMP_RX             35
+#define METAKOM_TX          25
+#define COMP_RX             3
 #define OWI_TX              33
 #define OWI_TX_2            15
 #define PULLUP_PIN          25

@@ -15,7 +15,6 @@
 #include "globals_menus.h"
 #include "owi.h"
 
-TaskHandle_t touchReadTask = NULL;
 
 menu_t scanTagMenu = {
     .menuId = TAG_SCAN,    
@@ -30,12 +29,8 @@ menu_t scanTagMenu = {
 void scan_tag_menu_enter()
 {
     scanTagMenu.status = EVT_ON_ENTRY;
-    // rfid_enable_rx_tag();
-    ESP_ERROR_CHECK(gpio_isr_handler_add(COMP_RX, owi_emulation_isr, (void *)COMP_RX));
-    gpio_set_level(PULLUP_PIN, 0);
-    touch_rx_enable();
-    if (touchReadTask == NULL)
-        xTaskCreate(touch_read_task, "touch_read_task", 2048, NULL, 4, &touchReadTask);
+    rfid_enable_rx();
+    // touch_rx_enable();    
 }
 
 menu_t *scan_tag_menu_handle(ui_event_e event)
@@ -47,9 +42,7 @@ menu_t *scan_tag_menu_handle(ui_event_e event)
     {
     case EVT_KEY_SCAN_DONE:
         scanTagMenu.status = event; // Send event data to dislapy callback
-        if (touchReadTask != NULL)
-            vTaskDelete(touchReadTask); // Delete task
-        touchReadTask = NULL;
+        touch_rx_disable();
         // Delay timer to show access points
         display_delay_cb_arg = EVT_NEXT_MENU;
         esp_err_t err = esp_timer_start_once(display_delay_timer_handle, 4000 * 1000ULL);
@@ -78,11 +71,7 @@ void scan_tag_menu_exit()
     rfid_disable_rx_tx();
     touch_rx_disable();
     esp_timer_stop(display_delay_timer_handle);
-    if (touchReadTask)
-    {
-        vTaskDelete(touchReadTask);
-        touchReadTask = NULL;
-    }
+    touch_rx_disable();
 }
 
 void scan_tag_menu_draw()
@@ -107,7 +96,7 @@ void scan_tag_menu_draw()
         case KEY_TYPE_EM4100_MANCHESTER_64:            
             formatStr = "0x%010llX";
             break;
-        case KEY_TYPE_KT2:
+        case KEY_TYPE_METAKOM:
              formatStr = "0x%08llX";
             break;
         case KEY_TYPE_IBUTTON:            

@@ -250,7 +250,7 @@ uint64_t rfid_array_to_tag(uint8_t tagArr[])
     return long_tag;
 }
 
-void rfid_enable_rx_tag()
+void rfid_enable_rx()
 {   
     const char* TAG = "enable read tag";
     esp_err_t err = rmt_disable(rfid_tx_ch);
@@ -277,8 +277,9 @@ void rfid_enable_rx_tag()
     syncErrorFunc(&m);
 }
 
-void rfid_enable_tx_raw_tag(uint64_t rawTag)
+void rfid_enable_tx_raw(uint64_t rawTag)
 {
+    printf("rfid tx---------------\n");
     const char* TAG = "enable tx tag";
     // Disable GPIO input signal interrupt
     ESP_ERROR_CHECK(gpio_intr_disable(RFID_RX));

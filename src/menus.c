@@ -81,8 +81,8 @@ void display_list(menu_t* menu)
     uint8_t maxDisplayItems = (u8g2_GetDisplayHeight(&u8g2) - menu->startPosY) / (u8g2_GetMaxCharHeight(&u8g2)+1);
     if (menu->listBox->maxRows > maxDisplayItems) menu->listBox->maxRows = maxDisplayItems;
     
-    ESP_LOGI("display list", "maxRows: %d", menu->listBox->maxRows);
-    ESP_LOGI("display list", "MaxCharWidth: %d", u8g2_GetMaxCharWidth(&u8g2));
+    // ESP_LOGI("display list", "maxRows: %d", menu->listBox->maxRows);
+    // ESP_LOGI("display list", "MaxCharWidth: %d", u8g2_GetMaxCharWidth(&u8g2));
     scroll_task_stop();
     u8g2_ClearBuffer(&u8g2);
     for (int16_t i = 0; i < (menu->listBox->maxRows) && (i < listSize); i++)
@@ -350,22 +350,6 @@ void display_delay_timer_callback(void* event)
     xQueueSendToBack(uiEventQueue, (ui_event_e*)event, pdMS_TO_TICKS(15));
 }
 
-void key_tx_cycle_callback()
-{
-    int8_t idx = 0;
-    if (bestLocsNum <= 0) return;
-
-    for (;;)
-    {
-        uint64_t rawTag = rfid_arr_tag_to_raw_bitstream(bestLocs[idx].keyData.rfid.id);
-        rfid_enable_tx_raw_tag(rawTag);
-        // ESP_LOGI("tag_tx_cycle", "loc: %s\ttag: 0x%010llX", bestLocs[i].name, keyData);
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
-        idx++;
-        if (idx >= bestLocsNum)
-            idx = 0;
-    }
-}
 
 void list_event_handle(menu_t *menu, ui_event_e event)
 {
