@@ -153,22 +153,22 @@ void gpio_pins_init()
         .pull_down_en = GPIO_PULLDOWN_DISABLE};
     ESP_ERROR_CHECK(gpio_config(&led_io));
 
-    // // Keypad pin setup
-    // gpio_config_t keypad_out = {
-    //     .mode = GPIO_MODE_OUTPUT,
-    //     .pin_bit_mask = (1ULL << CD4017_CLK) | (1ULL << CD4017_RST),
-    //     .pull_up_en = GPIO_PULLUP_DISABLE,
-    //     .pull_down_en = GPIO_PULLDOWN_DISABLE,
-    //     .intr_type = GPIO_INTR_DISABLE,};
-    // ESP_ERROR_CHECK(gpio_config(&keypad_out));
+    // Keypad pin setup
+    gpio_config_t keypad_out = {
+        .mode = GPIO_MODE_OUTPUT,
+        .pin_bit_mask = (1ULL << CD4017_CLK) | (1ULL << CD4017_RST),
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,};
+    ESP_ERROR_CHECK(gpio_config(&keypad_out));
 
-    // gpio_config_t keypad_in = {
-    //     .mode = GPIO_MODE_INPUT,
-    //     .pin_bit_mask = (1ULL << KEYPAD_C0) | (1ULL << KEYPAD_C1),
-    //     .pull_up_en = GPIO_PULLUP_DISABLE,
-    //     .pull_down_en = GPIO_PULLDOWN_DISABLE,
-    //     .intr_type = GPIO_INTR_DISABLE,};
-    // ESP_ERROR_CHECK(gpio_config(&keypad_in));
+    gpio_config_t keypad_in = {
+        .mode = GPIO_MODE_INPUT,
+        .pin_bit_mask = (1ULL << KEYPAD_C0) | (1ULL << KEYPAD_C1),
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,};
+    ESP_ERROR_CHECK(gpio_config(&keypad_in));
 
     // Touch memory pins
     // Pullup pin
@@ -193,25 +193,27 @@ void gpio_pins_init()
     ESP_ERROR_CHECK(gpio_config(&matakom_tx_config));
     
     // One Wire transmit
-    gpio_set_level(OWI_TX, 0);
-    gpio_config_t owi_tx_config = {
-        .mode = GPIO_MODE_OUTPUT,
-        .pin_bit_mask = (1ULL << OWI_TX),
-        .pull_up_en = GPIO_PULLUP_ENABLE,      
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type = GPIO_INTR_DISABLE,};
-    ESP_ERROR_CHECK(gpio_config(&owi_tx_config));
-
-    // Test 1 wire tx
-    gpio_set_level(OWI_TX_2, 0);
+    gpio_set_level(OWI_MASTER_DRIVE, 0);
     gpio_config_t owi_tx_2_config = {
         .mode = GPIO_MODE_OUTPUT,
-        .pin_bit_mask = (1ULL << OWI_TX_2),
+        .pin_bit_mask = (1ULL << OWI_MASTER_DRIVE),
         .pull_up_en = GPIO_PULLUP_ENABLE,      
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .intr_type = GPIO_INTR_DISABLE,};
     ESP_ERROR_CHECK(gpio_config(&owi_tx_2_config));
-    gpio_set_level(OWI_TX_2, 0);
+    gpio_set_level(OWI_MASTER_DRIVE, 0);
+
+    // Slave test
+    #if CONFIG_OWI_LOOPBACK_TEST
+    gpio_set_level(OWI_SLAVE_DRIVE, 0);
+    gpio_config_t owi_tx_config = {
+        .mode = GPIO_MODE_OUTPUT,
+        .pin_bit_mask = (1ULL << OWI_SLAVE_DRIVE),
+        .pull_up_en = GPIO_PULLUP_ENABLE,      
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,};
+    ESP_ERROR_CHECK(gpio_config(&owi_tx_config));
+    #endif
     
     // Comparator output pin
     gpio_config_t comp_rx_config = {
@@ -288,15 +290,15 @@ void uart_event_task(void *pvParameters)
 
 const ui_event_e keyLookup[10][2] = {
     {KEY_9, KEY_SHIFT},      // ROW 0
-    {KEY_0, KEY_CLEAR_CHAR}, // ROW 1
+    {KEY_CLEAR_CHAR, KEY_0}, // ROW 1
     {KEY_8, KEY_7},          // ROW 2
     {KEY_3, KEY_2},          // ROW 3
-    {KEY_LEFT, KEY_ENTER},   // ROW 4
+    {KEY_UP, KEY_BACK},   // ROW 4
     {0, 0},                  // ROW 5
-    {KEY_5, KEY_4},          // ROW 6
-    {KEY_6, KEY_1},          // ROW 7
-    {KEY_UP, KEY_BACK},      // ROW 8
-    {KEY_DOWN, KEY_RIGHT},   // ROW 9
+    {KEY_5, KEY_6},          // ROW 6
+    {KEY_4, KEY_1},          // ROW 7
+    {KEY_ENTER, KEY_LEFT},      // ROW 8
+    {KEY_RIGHT, KEY_DOWN},   // ROW 9
 };
 
 uint8_t keypadRow = 0;
@@ -330,7 +332,7 @@ void keypad_poll_callback()
                 pressedKey[keypadRow][i] = true;
                 if (xQueueSendToBack(uiEventQueue, &keyLookup[keypadRow][i], pdMS_TO_TICKS(15))!= pdPASS)
                 {}
-                // printf("Key [%d][%d] Pressed\n", keypadRow, i);
+                printf("Key [%d][%d] Pressed\n", keypadRow, i);
             }
                
         }
@@ -339,7 +341,7 @@ void keypad_poll_callback()
             if (pressedKey[keypadRow][i] == 1)
             {
                 pressedKey[keypadRow][i] = false;
-                printf("Key [%d][%d] Released\n", keypadRow, i);
+                // printf("Key [%d][%d] Released\n", keypadRow, i);
             }
             
         }
@@ -511,7 +513,7 @@ void app_main(void)
     //     ESP_LOGE(TAG, "Error occurred: %s (0x%x)", esp_err_to_name(err), err);
 // RMT TX 1-Wire Slave Device
     // rmt_tx_channel_config_t owi_tx_ch_config = {
-    //     .gpio_num = OWI_TX,
+    //     .gpio_num = OWI_SLAVE_DRIVE,
     //     .clk_src = RMT_CLK_SRC_DEFAULT,
     //     .resolution_hz = 1000000, // 1 MHz resolution
     //     .mem_block_symbols = 64,
@@ -567,17 +569,17 @@ void app_main(void)
     xTaskCreate(uart_event_task, "uart_receive_task", 1024, NULL, 2, NULL);
     // xTaskCreate(textbox_dispay, "tbt", 2048, NULL, 1, NULL);
 //-----------------------------------------------------------------------------
-    // const esp_timer_create_args_t keypad_poll_timer_args = {
-    //     .callback = &keypad_poll_callback,
-    //     .name = "keypad_poll",                    
-    //     };
-    // err = esp_timer_create(&keypad_poll_timer_args, &keypad_poll_handler);
-    // if (err != ESP_OK)
-    // {
-    //     ESP_LOGE(TAG, "Failed to create confirmation timer: %s", esp_err_to_name(err));
-    //     return;
-    // }
-    // esp_timer_start_periodic(keypad_poll_handler, 555);
+    const esp_timer_create_args_t keypad_poll_timer_args = {
+        .callback = &keypad_poll_callback,
+        .name = "keypad_poll",                    
+        };
+    err = esp_timer_create(&keypad_poll_timer_args, &keypad_poll_handler);
+    if (err != ESP_OK)
+    {
+        ESP_LOGE(TAG, "Failed to create confirmation timer: %s", esp_err_to_name(err));
+        return;
+    }
+    esp_timer_start_periodic(keypad_poll_handler, 555);
 
 //-----------------------------------------------------------------------------
     const esp_timer_create_args_t confirmation_timer_args = {

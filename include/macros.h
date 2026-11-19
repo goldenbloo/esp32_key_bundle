@@ -6,17 +6,22 @@
 #define CONFIG_SDA_GPIO     21
 #define CONFIG_SCL_GPIO     22
 
-#define CD4017_CLK          14
+#define CD4017_CLK          13
 #define CD4017_RST          12
 #define KEYPAD_C0           14
 #define KEYPAD_C1           27
 
 #define METAKOM_TX          25
-#define COMP_RX             3
-#define OWI_TX              33
-#define OWI_TX_2            15
-#define PULLUP_PIN          25
-#define KEY_LINE            23
+#define COMP_RX             32
+#define PULLUP_PIN          33
+#define OWI_BUS_DRIVE       26
+
+#if CONFIG_OWI_LOOPBACK_TEST       // single-ESP32 master+slave testing
+#define OWI_MASTER_DRIVE    34   // separate test pin wired to same bus
+#else
+#define OWI_MASTER_DRIVE    OWI_BUS_DRIVE
+#endif
+#define OWI_SLAVE_DRIVE     OWI_BUS_DRIVE
  
 
 #define PERIOD              512

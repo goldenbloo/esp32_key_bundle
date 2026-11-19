@@ -18,9 +18,9 @@ static volatile owi_device_t dev = {
 
 bool owi_reset()
 {    
-    gpio_set_level(OWI_TX_2, 1); // Open transistor, set line low    
+    gpio_set_level(OWI_MASTER_DRIVE, 1); // Open transistor, set line low    
     esp_rom_delay_us(485); // Reset pulse
-    gpio_set_level(OWI_TX_2, 0); // Close transistor
+    gpio_set_level(OWI_MASTER_DRIVE, 0); // Close transistor
     esp_rom_delay_us(70); // Wait for presence
     bool level = gpio_get_level(COMP_RX); // Read presence, signal reversed due to comparator
     esp_rom_delay_us(410);      // Wait for the rest of the slot
@@ -35,16 +35,16 @@ void owi_write_bit(uint8_t bit)
 {
     if ((bit & 0x1) == 0) // Write 0
     {
-        gpio_set_level(OWI_TX_2, 1); // Transistor ON -> Line LOW
+        gpio_set_level(OWI_MASTER_DRIVE, 1); // Transistor ON -> Line LOW
         esp_rom_delay_us(60);      // Hold LOW for 60us
-        gpio_set_level(OWI_TX_2, 0); // Release
+        gpio_set_level(OWI_MASTER_DRIVE, 0); // Release
         esp_rom_delay_us(10);       // Recovery time
     }
     else // Write 1
     {
-        gpio_set_level(OWI_TX_2, 1); // Transistor ON -> Line LOW
+        gpio_set_level(OWI_MASTER_DRIVE, 1); // Transistor ON -> Line LOW
         esp_rom_delay_us(7);       // Short pulse 
-        gpio_set_level(OWI_TX_2, 0); // Release
+        gpio_set_level(OWI_MASTER_DRIVE, 0); // Release
         esp_rom_delay_us(63);      // Wait for the rest of the slot
     }    
 }
@@ -58,9 +58,9 @@ void owi_write_byte(uint8_t data)
 bool owi_read_bit()
 {
     bool level;  
-    gpio_set_level(OWI_TX_2, 1); // Transistor ON -> Line LOW
+    gpio_set_level(OWI_MASTER_DRIVE, 1); // Transistor ON -> Line LOW
     esp_rom_delay_us(6);       // Hold LOW 
-    gpio_set_level(OWI_TX_2, 0); // Release
+    gpio_set_level(OWI_MASTER_DRIVE, 0); // Release
     esp_rom_delay_us(10); 
     level = gpio_get_level(COMP_RX); // Read level, signal reversed due to comparator
     esp_rom_delay_us(50); // Wait for the rest of the slot
@@ -342,21 +342,21 @@ void owi_slave_disable()
 
 static inline void owi_slave_presence()
 {
-    GPIO.out1_w1ts.val = (1UL << (OWI_TX - 32)); // Pull low
+    GPIO.out1_w1ts.val = (1UL << (OWI_SLAVE_DRIVE - 32)); // Pull low
     esp_rom_delay_us(100);
-    GPIO.out1_w1tc.val = (1UL << (OWI_TX - 32)); // Release high
+    GPIO.out1_w1tc.val = (1UL << (OWI_SLAVE_DRIVE - 32)); // Release high
     esp_rom_delay_us(2);
-    GPIO.status1_w1tc.val = (1UL << (OWI_TX - 32));
+    GPIO.status1_w1tc.val = (1UL << (OWI_SLAVE_DRIVE - 32));
     lastIsrTime = esp_cpu_get_cycle_count();
 }
 
 static inline void owi_slave_write_zero()
 {
-    GPIO.out1_w1ts.val = (1UL << (OWI_TX - 32)); // Pull low
+    GPIO.out1_w1ts.val = (1UL << (OWI_SLAVE_DRIVE - 32)); // Pull low
     esp_rom_delay_us(55);
-    GPIO.out1_w1tc.val = (1UL << (OWI_TX - 32)); // Release high
+    GPIO.out1_w1tc.val = (1UL << (OWI_SLAVE_DRIVE - 32)); // Release high
     esp_rom_delay_us(2);
-    GPIO.status1_w1tc.val = (1UL << (OWI_TX - 32));
+    GPIO.status1_w1tc.val = (1UL << (OWI_SLAVE_DRIVE - 32));
     lastIsrTime = esp_cpu_get_cycle_count();
 }
 

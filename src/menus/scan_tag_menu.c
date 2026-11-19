@@ -30,7 +30,7 @@ void scan_tag_menu_enter()
 {
     scanTagMenu.status = EVT_ON_ENTRY;
     rfid_enable_rx();
-    // touch_rx_enable();    
+    touch_rx_enable();    
 }
 
 menu_t *scan_tag_menu_handle(ui_event_e event)

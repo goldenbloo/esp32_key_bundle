@@ -26,7 +26,7 @@ uint32_t keyId;
 
 void IRAM_ATTR comp_rx_isr_handler(void *arg)
 {
-    // if (gpio_get_level(OWI_TX) == 1) return;
+    // if (gpio_get_level(OWI_SLAVE_DRIVE) == 1) return;
     uint32_t duration = esp_cpu_get_cycle_count() - lastIsrTime;
     if ((duration) <  50 * CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ)            
         return;
